@@ -1,28 +1,8 @@
 import 'package:flutter/material.dart';
-
-class Group {
-  final String id;
-  final String name;
-  final String description;
-  final List<String> members;
-  final String eventName;
-  final DateTime eventDate;
-  final String imageUrl;
-  final double totalBudget;
-  final double collectedBudget;
-
-  Group({
-    required this.id,
-    required this.name,
-    required this.description,
-    required this.members,
-    required this.eventName,
-    required this.eventDate,
-    required this.imageUrl,
-    required this.totalBudget,
-    required this.collectedBudget,
-  });
-}
+import 'package:flutter/services.dart';
+import '../models/group.dart';
+import '../services/api_service.dart';
+import '../services/auth_service.dart';
 
 class MyGroupsScreen extends StatefulWidget {
   const MyGroupsScreen({super.key});
@@ -32,41 +12,53 @@ class MyGroupsScreen extends StatefulWidget {
 }
 
 class _MyGroupsScreenState extends State<MyGroupsScreen> {
-  final List<Group> _groups = [
-    Group(
-      id: '1',
-      name: 'Rockeros Unidos',
-      description: 'Grupo para eventos de rock y metal',
-      members: ['Carlos', 'Ana', 'Diego', 'María'],
-      eventName: 'Concierto Rock Nacional',
-      eventDate: DateTime.now().add(const Duration(days: 3)),
-      imageUrl: 'https://images.unsplash.com/photo-1493225457124-a3eb161ffa5f?w=400',
-      totalBudget: 340000,
-      collectedBudget: 255000,
-    ),
-    Group(
-      id: '2',
-      name: 'Foodies Adventure',
-      description: 'Explorando sabores juntos',
-      members: ['Sofia', 'Luis', 'Carmen'],
-      eventName: 'Feria Gastronómica',
-      eventDate: DateTime.now().add(const Duration(days: 5)),
-      imageUrl: 'https://images.unsplash.com/photo-1555939594-58d7cb561ad1?w=400',
-      totalBudget: 0,
-      collectedBudget: 0,
-    ),
-    Group(
-      id: '3',
-      name: 'Comedy Squad',
-      description: 'Los que amamos reír',
-      members: ['Pedro', 'Laura'],
-      eventName: 'Stand Up Comedy Night',
-      eventDate: DateTime.now().add(const Duration(days: 2)),
-      imageUrl: 'https://images.unsplash.com/photo-1516307365426-bea591f05011?w=400',
-      totalBudget: 110000,
-      collectedBudget: 75000,
-    ),
-  ];
+  List<Group> _groups = [];
+  bool _isLoading = true;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadGroups();
+  }
+
+  Future<void> _loadGroups() async {
+    if (!mounted) return;
+    
+    setState(() {
+      _isLoading = true;
+      _error = null;
+    });
+
+    try {
+      final user = await AuthService.getCurrentUser();
+      if (!mounted) return;
+      
+      if (user != null && user.id != null) {
+        final groups = await ApiService.getGroupsByMember(user.id!);
+        if (!mounted) return;
+        
+        setState(() {
+          _groups = groups;
+          _isLoading = false;
+        });
+      } else {
+        if (!mounted) return;
+        
+        setState(() {
+          _error = 'No hay usuario autenticado';
+          _isLoading = false;
+        });
+      }
+    } catch (e) {
+      if (!mounted) return;
+      
+      setState(() {
+        _error = 'Error cargando grupos: $e';
+        _isLoading = false;
+      });
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -88,97 +80,112 @@ class _MyGroupsScreenState extends State<MyGroupsScreen> {
             icon: const Icon(Icons.add, color: Color(0xFF6366F1)),
             onPressed: () => _showCreateGroupDialog(),
           ),
+          IconButton(
+            icon: const Icon(Icons.qr_code_scanner, color: Color(0xFF6366F1)),
+            onPressed: () => _showJoinGroupDialog(),
+          ),
         ],
       ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Header Info
-            Container(
-              padding: const EdgeInsets.all(20),
-              decoration: BoxDecoration(
-                gradient: const LinearGradient(
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                  colors: [Color(0xFF6366F1), Color(0xFF8B5CF6)],
-                ),
-                borderRadius: BorderRadius.circular(16),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Row(
-                    children: [
-                      Icon(Icons.groups, color: Colors.white, size: 24),
-                      SizedBox(width: 8),
-                      Text(
-                        'Tus Grupos',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 20,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 8),
-                  const Text(
-                    'Organiza eventos con tus amigos y administra gastos grupales',
-                    style: TextStyle(
-                      color: Colors.white70,
-                      fontSize: 14,
+      body: _isLoading
+          ? const Center(child: CircularProgressIndicator())
+          : _error != null
+              ? _buildErrorState()
+              : RefreshIndicator(
+                  onRefresh: _loadGroups,
+                  child: SingleChildScrollView(
+                    physics: const AlwaysScrollableScrollPhysics(),
+                    padding: const EdgeInsets.all(16),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        _buildHeader(),
+                        const SizedBox(height: 24),
+                        _buildActionButtons(),
+                        const SizedBox(height: 24),
+                        _buildGroupsList(),
+                      ],
                     ),
                   ),
-                  const SizedBox(height: 16),
-                  Row(
-                    children: [
-                      _buildStatChip('${_groups.length} Grupos', Icons.group),
-                      const SizedBox(width: 12),
-                      _buildStatChip('${_groups.where((g) => g.totalBudget > 0).length} Activos', Icons.account_balance_wallet),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-            
-            const SizedBox(height: 24),
-            
-            // Create New Group Button
-            SizedBox(
-              width: double.infinity,
-              child: OutlinedButton.icon(
-                onPressed: () => _showCreateGroupDialog(),
-                icon: const Icon(Icons.add),
-                label: const Text('Crear Nuevo Grupo'),
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: const Color(0xFF6366F1),
-                  side: const BorderSide(color: Color(0xFF6366F1)),
-                  padding: const EdgeInsets.symmetric(vertical: 16),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
                 ),
-              ),
-            ),
-            
-            const SizedBox(height: 24),
-            
-            // Groups List
-            const Text(
-              'Mis Grupos',
-              style: TextStyle(
-                fontSize: 20,
-                fontWeight: FontWeight.bold,
-                color: Colors.black87,
-              ),
-            ),
+    );
+  }
+
+  Widget _buildErrorState() {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(Icons.error_outline, size: 64, color: Colors.red),
             const SizedBox(height: 16),
-            
-            ..._groups.map((group) => _buildGroupCard(group)).toList(),
+            Text(
+              _error!,
+              textAlign: TextAlign.center,
+              style: const TextStyle(fontSize: 16),
+            ),
+            const SizedBox(height: 24),
+            ElevatedButton(
+              onPressed: _loadGroups,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF6366F1),
+                foregroundColor: Colors.white,
+              ),
+              child: const Text('Reintentar'),
+            ),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _buildHeader() {
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [Color(0xFF6366F1), Color(0xFF8B5CF6)],
+        ),
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Row(
+            children: [
+              Icon(Icons.groups, color: Colors.white, size: 24),
+              SizedBox(width: 8),
+              Text(
+                'Tus Grupos',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 20,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          const Text(
+            'Organiza eventos con tus amigos y administra gastos grupales',
+            style: TextStyle(
+              color: Colors.white70,
+              fontSize: 14,
+            ),
+          ),
+          const SizedBox(height: 16),
+          Row(
+            children: [
+              _buildStatChip('${_groups.length} Grupos', Icons.group),
+              const SizedBox(width: 12),
+              _buildStatChip(
+                  '${_groups.where((g) => g.memberIds.length > 1).length} Activos',
+                  Icons.people),
+            ],
+          ),
+        ],
       ),
     );
   }
@@ -208,9 +215,94 @@ class _MyGroupsScreenState extends State<MyGroupsScreen> {
     );
   }
 
+  Widget _buildActionButtons() {
+    return Column(
+      children: [
+        SizedBox(
+          width: double.infinity,
+          child: OutlinedButton.icon(
+            onPressed: () => _showCreateGroupDialog(),
+            icon: const Icon(Icons.add),
+            label: const Text('Crear Nuevo Grupo'),
+            style: OutlinedButton.styleFrom(
+              foregroundColor: const Color(0xFF6366F1),
+              side: const BorderSide(color: Color(0xFF6366F1)),
+              padding: const EdgeInsets.symmetric(vertical: 16),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(height: 12),
+        SizedBox(
+          width: double.infinity,
+          child: ElevatedButton.icon(
+            onPressed: () => _showJoinGroupDialog(),
+            icon: const Icon(Icons.qr_code_scanner),
+            label: const Text('Unirse con Código'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF6366F1),
+              foregroundColor: Colors.white,
+              padding: const EdgeInsets.symmetric(vertical: 16),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildGroupsList() {
+    if (_groups.isEmpty) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(32),
+          child: Column(
+            children: [
+              Icon(Icons.groups_outlined,
+                  size: 80, color: Colors.grey.shade300),
+              const SizedBox(height: 16),
+              Text(
+                'No tienes grupos aún',
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.grey.shade600,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Crea un grupo nuevo o únete usando un código de invitación',
+                textAlign: TextAlign.center,
+                style: TextStyle(fontSize: 14, color: Colors.grey.shade500),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          'Mis Grupos',
+          style: TextStyle(
+            fontSize: 20,
+            fontWeight: FontWeight.bold,
+            color: Colors.black87,
+          ),
+        ),
+        const SizedBox(height: 16),
+        ..._groups.map((group) => _buildGroupCard(group)).toList(),
+      ],
+    );
+  }
+
   Widget _buildGroupCard(Group group) {
-    final progress = group.totalBudget > 0 ? group.collectedBudget / group.totalBudget : 0.0;
-    
     return Container(
       margin: const EdgeInsets.only(bottom: 16),
       decoration: BoxDecoration(
@@ -233,7 +325,6 @@ class _MyGroupsScreenState extends State<MyGroupsScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Header
               Row(
                 children: [
                   Container(
@@ -264,154 +355,74 @@ class _MyGroupsScreenState extends State<MyGroupsScreen> {
                             color: Colors.black87,
                           ),
                         ),
-                        Text(
-                          group.description,
-                          style: const TextStyle(
-                            fontSize: 14,
-                            color: Colors.grey,
+                        if (group.description != null &&
+                            group.description!.isNotEmpty)
+                          Text(
+                            group.description!,
+                            style: const TextStyle(
+                              fontSize: 14,
+                              color: Colors.grey,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
                           ),
-                        ),
                       ],
                     ),
                   ),
-                  if (group.totalBudget > 0)
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                      decoration: BoxDecoration(
-                        color: Colors.green.withOpacity(0.1),
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: const Text(
-                        'Activo',
-                        style: TextStyle(
-                          color: Colors.green,
-                          fontSize: 12,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ),
+                  FutureBuilder<bool>(
+                    future: _isUserCreator(group),
+                    builder: (context, snapshot) {
+                      if (snapshot.data == true) {
+                        return Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 8, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: Colors.amber.withOpacity(0.1),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: const Text(
+                            'Admin',
+                            style: TextStyle(
+                              color: Colors.amber,
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        );
+                      }
+                      return const SizedBox.shrink();
+                    },
+                  ),
                 ],
               ),
-              
-              const SizedBox(height: 16),
-              
-              // Event Info
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: Colors.grey[50],
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: Colors.grey[200]!),
-                ),
-                child: Row(
-                  children: [
-                    const Icon(Icons.event, color: Colors.grey, size: 20),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            group.eventName,
-                            style: const TextStyle(
-                              fontSize: 14,
-                              fontWeight: FontWeight.w600,
-                              color: Colors.black87,
-                            ),
-                          ),
-                          Text(
-                            _formatDate(group.eventDate),
-                            style: const TextStyle(
-                              fontSize: 12,
-                              color: Colors.grey,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              
               const SizedBox(height: 12),
-              
-              // Members
               Row(
                 children: [
                   const Icon(Icons.people, color: Colors.grey, size: 16),
                   const SizedBox(width: 4),
                   Text(
-                    '${group.members.length} miembros',
+                    '${group.memberCount} / ${group.maxMembers} miembros',
                     style: const TextStyle(
                       color: Colors.grey,
                       fontSize: 14,
                     ),
                   ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      group.members.take(3).join(', ') + 
-                      (group.members.length > 3 ? '...' : ''),
-                      style: const TextStyle(
-                        color: Colors.grey,
-                        fontSize: 14,
+                  const Spacer(),
+                  if (group.inviteCode != null)
+                    TextButton.icon(
+                      onPressed: () => _shareInviteCode(group),
+                      icon: const Icon(Icons.share, size: 16),
+                      label: const Text('Compartir'),
+                      style: TextButton.styleFrom(
+                        foregroundColor: const Color(0xFF6366F1),
+                        padding: EdgeInsets.zero,
+                        minimumSize: const Size(0, 0),
+                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                       ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
                     ),
-                  ),
                 ],
               ),
-              
-              // Budget Progress (if applicable)
-              if (group.totalBudget > 0) ...[
-                const SizedBox(height: 16),
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        const Text(
-                          'Presupuesto',
-                          style: TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.w600,
-                            color: Colors.black87,
-                          ),
-                        ),
-                        Text(
-                          '\$${group.collectedBudget.toStringAsFixed(0)} / \$${group.totalBudget.toStringAsFixed(0)}',
-                          style: const TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.w600,
-                            color: Color(0xFF6366F1),
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 8),
-                    LinearProgressIndicator(
-                      value: progress,
-                      backgroundColor: Colors.grey[200],
-                      valueColor: const AlwaysStoppedAnimation<Color>(Color(0xFF6366F1)),
-                      borderRadius: BorderRadius.circular(4),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      '${(progress * 100).toStringAsFixed(0)}% completado',
-                      style: const TextStyle(
-                        fontSize: 12,
-                        color: Colors.grey,
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-              
-              const SizedBox(height: 16),
-              
-              // Action Buttons
+              const SizedBox(height: 12),
               Row(
                 children: [
                   Expanded(
@@ -428,24 +439,6 @@ class _MyGroupsScreenState extends State<MyGroupsScreen> {
                       ),
                     ),
                   ),
-                  const SizedBox(width: 8),
-                  if (group.totalBudget > 0)
-                    Expanded(
-                      child: ElevatedButton.icon(
-                        onPressed: () {
-                          Navigator.pushNamed(context, '/wallet');
-                        },
-                        icon: const Icon(Icons.account_balance_wallet, size: 16),
-                        label: const Text('Billetera'),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: const Color(0xFF6366F1),
-                          foregroundColor: Colors.white,
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                        ),
-                      ),
-                    ),
                 ],
               ),
             ],
@@ -455,15 +448,16 @@ class _MyGroupsScreenState extends State<MyGroupsScreen> {
     );
   }
 
-  String _formatDate(DateTime date) {
-    const months = [
-      'Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun',
-      'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'
-    ];
-    return "${date.day} ${months[date.month - 1]} • ${date.hour.toString().padLeft(2, '0')}:${date.minute.toString().padLeft(2, '0')}";
+  Future<bool> _isUserCreator(Group group) async {
+    final user = await AuthService.getCurrentUser();
+    return user?.id == group.creatorId;
   }
 
   void _showCreateGroupDialog() {
+    final nameController = TextEditingController();
+    final descriptionController = TextEditingController();
+    final maxMembersController = TextEditingController(text: '50');
+
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
@@ -472,15 +466,260 @@ class _MyGroupsScreenState extends State<MyGroupsScreen> {
         ),
         title: const Row(
           children: [
-            Icon(Icons.construction, color: Colors.orange),
+            Icon(Icons.group_add, color: Color(0xFF6366F1)),
             SizedBox(width: 8),
-            Text('En Construcción'),
+            Text('Crear Nuevo Grupo'),
           ],
         ),
-        content: const Text(
-          'La funcionalidad de crear grupos está actualmente en desarrollo. '
-          '¡Pronto podrás crear y administrar tus propios grupos!',
-          style: TextStyle(fontSize: 16),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: nameController,
+                decoration: const InputDecoration(
+                  labelText: 'Nombre del Grupo',
+                  hintText: 'Ej: Rockeros Unidos',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+              const SizedBox(height: 16),
+              TextField(
+                controller: descriptionController,
+                decoration: const InputDecoration(
+                  labelText: 'Descripción',
+                  hintText: 'Describe tu grupo',
+                  border: OutlineInputBorder(),
+                ),
+                maxLines: 3,
+              ),
+              const SizedBox(height: 16),
+              TextField(
+                controller: maxMembersController,
+                decoration: const InputDecoration(
+                  labelText: 'Máximo de Miembros',
+                  border: OutlineInputBorder(),
+                ),
+                keyboardType: TextInputType.number,
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancelar'),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              if (nameController.text.trim().isEmpty) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                      content: Text('El nombre del grupo es requerido')),
+                );
+                return;
+              }
+
+              try {
+                final user = await AuthService.getCurrentUser();
+                if (user == null || user.id == null) {
+                  throw Exception('Usuario no autenticado');
+                }
+
+                final maxMembers = int.tryParse(maxMembersController.text) ?? 50;
+
+                final group = await ApiService.createGroup(
+                  name: nameController.text.trim(),
+                  description: descriptionController.text.trim().isEmpty
+                      ? null
+                      : descriptionController.text.trim(),
+                  creatorId: user.id!,
+                  maxMembers: maxMembers,
+                );
+
+                if (mounted) {
+                  Navigator.pop(context);
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text('Grupo "${group.name}" creado exitosamente'),
+                      backgroundColor: Colors.green,
+                    ),
+                  );
+                  _loadGroups();
+                  _showInviteCodeDialog(group);
+                }
+              } catch (e) {
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text('Error creando grupo: $e'),
+                      backgroundColor: Colors.red,
+                    ),
+                  );
+                }
+              }
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF6366F1),
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('Crear'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showJoinGroupDialog() {
+    final codeController = TextEditingController();
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+        ),
+        title: const Row(
+          children: [
+            Icon(Icons.qr_code_scanner, color: Color(0xFF6366F1)),
+            SizedBox(width: 8),
+            Text('Unirse a un Grupo'),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text(
+              'Ingresa el código de invitación del grupo al que deseas unirte:',
+              style: TextStyle(fontSize: 14),
+            ),
+            const SizedBox(height: 16),
+            TextField(
+              controller: codeController,
+              decoration: const InputDecoration(
+                labelText: 'Código de Invitación',
+                hintText: 'Ej: ABC123',
+                border: OutlineInputBorder(),
+                prefixIcon: Icon(Icons.vpn_key),
+              ),
+              textCapitalization: TextCapitalization.characters,
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancelar'),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              final code = codeController.text.trim().toUpperCase();
+              if (code.isEmpty) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                      content: Text('Ingresa un código de invitación')),
+                );
+                return;
+              }
+
+              try {
+                final user = await AuthService.getCurrentUser();
+                if (user == null || user.id == null) {
+                  throw Exception('Usuario no autenticado');
+                }
+
+                final group =
+                    await ApiService.joinGroupWithInviteCode(code, user.id!);
+
+                if (mounted) {
+                  Navigator.pop(context);
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text('Te uniste al grupo "${group.name}"'),
+                      backgroundColor: Colors.green,
+                    ),
+                  );
+                  _loadGroups();
+                }
+              } catch (e) {
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text('Error uniéndose al grupo: $e'),
+                      backgroundColor: Colors.red,
+                    ),
+                  );
+                }
+              }
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF6366F1),
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('Unirse'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showInviteCodeDialog(Group group) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+        ),
+        title: const Row(
+          children: [
+            Icon(Icons.celebration, color: Color(0xFF6366F1)),
+            SizedBox(width: 8),
+            Text('¡Grupo Creado!'),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text(
+              'Tu grupo ha sido creado exitosamente. Comparte este código para que otros se unan:',
+              style: TextStyle(fontSize: 14),
+            ),
+            const SizedBox(height: 16),
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: const Color(0xFF6366F1).withOpacity(0.1),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: const Color(0xFF6366F1)),
+              ),
+              child: Column(
+                children: [
+                  Text(
+                    group.inviteCode ?? '',
+                    style: const TextStyle(
+                      fontSize: 32,
+                      fontWeight: FontWeight.bold,
+                      color: Color(0xFF6366F1),
+                      letterSpacing: 4,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  TextButton.icon(
+                    onPressed: () {
+                      Clipboard.setData(
+                          ClipboardData(text: group.inviteCode ?? ''));
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                            content: Text('Código copiado al portapapeles')),
+                      );
+                    },
+                    icon: const Icon(Icons.copy),
+                    label: const Text('Copiar Código'),
+                  ),
+                ],
+              ),
+            ),
+          ],
         ),
         actions: [
           TextButton(
@@ -498,152 +737,435 @@ class _MyGroupsScreenState extends State<MyGroupsScreen> {
     );
   }
 
-  void _showGroupDetails(Group group) {
+  void _shareInviteCode(Group group) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+        ),
+        title: const Row(
+          children: [
+            Icon(Icons.share, color: Color(0xFF6366F1)),
+            SizedBox(width: 8),
+            Text('Código de Invitación'),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              'Comparte este código para invitar a otros a "${group.name}":',
+              style: const TextStyle(fontSize: 14),
+            ),
+            const SizedBox(height: 16),
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: const Color(0xFF6366F1).withOpacity(0.1),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: const Color(0xFF6366F1)),
+              ),
+              child: Column(
+                children: [
+                  Text(
+                    group.inviteCode ?? '',
+                    style: const TextStyle(
+                      fontSize: 32,
+                      fontWeight: FontWeight.bold,
+                      color: Color(0xFF6366F1),
+                      letterSpacing: 4,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  TextButton.icon(
+                    onPressed: () {
+                      Clipboard.setData(
+                          ClipboardData(text: group.inviteCode ?? ''));
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                            content: Text('Código copiado al portapapeles')),
+                      );
+                    },
+                    icon: const Icon(Icons.copy),
+                    label: const Text('Copiar Código'),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text(
+              'Cerrar',
+              style: TextStyle(
+                color: Color(0xFF6366F1),
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showGroupDetails(Group group) async {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (context) {
-        return Container(
-          height: MediaQuery.of(context).size.height * 0.8,
-          decoration: const BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-          ),
-          child: Padding(
-            padding: const EdgeInsets.all(20),
-            child: Column(
-              children: [
-                // Handle bar
-                Container(
-                  width: 40,
-                  height: 4,
-                  decoration: BoxDecoration(
-                    color: Colors.grey[300],
-                    borderRadius: BorderRadius.circular(2),
+      builder: (context) => _GroupDetailsSheet(
+        group: group,
+        onGroupUpdated: _loadGroups,
+      ),
+    );
+  }
+}
+
+class _GroupDetailsSheet extends StatefulWidget {
+  final Group group;
+  final VoidCallback onGroupUpdated;
+
+  const _GroupDetailsSheet({
+    required this.group,
+    required this.onGroupUpdated,
+  });
+
+  @override
+  State<_GroupDetailsSheet> createState() => _GroupDetailsSheetState();
+}
+
+class _GroupDetailsSheetState extends State<_GroupDetailsSheet> {
+  bool _isUserCreator = false;
+  bool _isLoading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _checkIfCreator();
+  }
+
+  Future<void> _checkIfCreator() async {
+    final user = await AuthService.getCurrentUser();
+    setState(() {
+      _isUserCreator = user?.id == widget.group.creatorId;
+      _isLoading = false;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      height: MediaQuery.of(context).size.height * 0.8,
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      child: _isLoading
+          ? const Center(child: CircularProgressIndicator())
+          : Padding(
+              padding: const EdgeInsets.all(20),
+              child: Column(
+                children: [
+                  Container(
+                    width: 40,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: Colors.grey[300],
+                      borderRadius: BorderRadius.circular(2),
+                    ),
                   ),
-                ),
-                const SizedBox(height: 20),
-                
-                // Group Header
-                Row(
-                  children: [
-                    Container(
-                      width: 60,
-                      height: 60,
-                      decoration: BoxDecoration(
-                        gradient: const LinearGradient(
-                          colors: [Color(0xFF6366F1), Color(0xFF8B5CF6)],
+                  const SizedBox(height: 20),
+                  Row(
+                    children: [
+                      Container(
+                        width: 60,
+                        height: 60,
+                        decoration: BoxDecoration(
+                          gradient: const LinearGradient(
+                            colors: [Color(0xFF6366F1), Color(0xFF8B5CF6)],
+                          ),
+                          borderRadius: BorderRadius.circular(30),
                         ),
-                        borderRadius: BorderRadius.circular(30),
+                        child: const Icon(
+                          Icons.groups,
+                          color: Colors.white,
+                          size: 30,
+                        ),
                       ),
-                      child: const Icon(
-                        Icons.groups,
-                        color: Colors.white,
-                        size: 30,
+                      const SizedBox(width: 16),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              widget.group.name,
+                              style: const TextStyle(
+                                fontSize: 24,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            if (widget.group.description != null &&
+                                widget.group.description!.isNotEmpty)
+                              Text(
+                                widget.group.description!,
+                                style: const TextStyle(
+                                  fontSize: 16,
+                                  color: Colors.grey,
+                                ),
+                              ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 24),
+                  Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: Colors.grey[50],
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceAround,
+                      children: [
+                        _buildStat(
+                          icon: Icons.people,
+                          label: 'Miembros',
+                          value: '${widget.group.memberCount}/${widget.group.maxMembers}',
+                        ),
+                        Container(width: 1, height: 40, color: Colors.grey[300]),
+                        _buildStat(
+                          icon: Icons.calendar_today,
+                          label: 'Creado',
+                          value: _formatDate(widget.group.createdAt),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 24),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'Miembros del Grupo',
+                          style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        Expanded(
+                          child: ListView.builder(
+                            itemCount: widget.group.memberIds.length,
+                            itemBuilder: (context, index) {
+                              final memberId = widget.group.memberIds[index];
+                              final isCreator = memberId == widget.group.creatorId;
+                              return ListTile(
+                                leading: CircleAvatar(
+                                  backgroundColor: const Color(0xFF6366F1),
+                                  child: Text(
+                                    memberId.substring(0, 1).toUpperCase(),
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                ),
+                                title: Text('Usuario $memberId'),
+                                subtitle: Text(isCreator ? 'Creador' : 'Miembro'),
+                                trailing: isCreator
+                                    ? const Chip(
+                                        label: Text('Admin'),
+                                        backgroundColor: Color(0xFF6366F1),
+                                        labelStyle: TextStyle(
+                                            color: Colors.white, fontSize: 12),
+                                      )
+                                    : _isUserCreator
+                                        ? IconButton(
+                                            icon: const Icon(Icons.remove_circle_outline,
+                                                color: Colors.red),
+                                            onPressed: () => _removeMember(memberId),
+                                          )
+                                        : null,
+                              );
+                            },
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  if (_isUserCreator) ...[
+                    const SizedBox(height: 16),
+                    SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton.icon(
+                        onPressed: () async {
+                          try {
+                            await ApiService.deleteGroup(widget.group.id!);
+                            if (context.mounted) {
+                              Navigator.pop(context);
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text('Grupo eliminado exitosamente'),
+                                  backgroundColor: Colors.green,
+                                ),
+                              );
+                              widget.onGroupUpdated();
+                            }
+                          } catch (e) {
+                            if (context.mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text('Error eliminando grupo: $e'),
+                                  backgroundColor: Colors.red,
+                                ),
+                              );
+                            }
+                          }
+                        },
+                        icon: const Icon(Icons.delete_outline),
+                        label: const Text('Eliminar Grupo'),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.red,
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(vertical: 16),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                        ),
                       ),
                     ),
-                    const SizedBox(width: 16),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            group.name,
-                            style: const TextStyle(
-                              fontSize: 24,
-                              fontWeight: FontWeight.bold,
-                            ),
+                  ] else ...[
+                    const SizedBox(height: 16),
+                    SizedBox(
+                      width: double.infinity,
+                      child: OutlinedButton.icon(
+                        onPressed: () async {
+                          final user = await AuthService.getCurrentUser();
+                          if (user?.id != null) {
+                            try {
+                              await ApiService.removeMemberFromGroup(
+                                  widget.group.id!, user!.id!);
+                              if (context.mounted) {
+                                Navigator.pop(context);
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(
+                                    content: Text('Saliste del grupo'),
+                                    backgroundColor: Colors.green,
+                                  ),
+                                );
+                                widget.onGroupUpdated();
+                              }
+                            } catch (e) {
+                              if (context.mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                    content: Text('Error saliendo del grupo: $e'),
+                                    backgroundColor: Colors.red,
+                                  ),
+                                );
+                              }
+                            }
+                          }
+                        },
+                        icon: const Icon(Icons.exit_to_app),
+                        label: const Text('Salir del Grupo'),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: Colors.red,
+                          side: const BorderSide(color: Colors.red),
+                          padding: const EdgeInsets.symmetric(vertical: 16),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
                           ),
-                          Text(
-                            group.description,
-                            style: const TextStyle(
-                              fontSize: 16,
-                              color: Colors.grey,
-                            ),
-                          ),
-                        ],
+                        ),
                       ),
                     ),
                   ],
-                ),
-                
-                const SizedBox(height: 24),
-                
-                // Members List
-                const Align(
-                  alignment: Alignment.centerLeft,
-                  child: Text(
-                    'Miembros del Grupo',
-                    style: TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 12),
-                
-                Expanded(
-                  child: ListView.builder(
-                    itemCount: group.members.length,
-                    itemBuilder: (context, index) {
-                      final member = group.members[index];
-                      return ListTile(
-                        leading: CircleAvatar(
-                          backgroundColor: const Color(0xFF6366F1),
-                          child: Text(
-                            member[0].toUpperCase(),
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                        ),
-                        title: Text(member),
-                        subtitle: const Text('Miembro'),
-                        trailing: index == 0 
-                            ? const Chip(
-                                label: Text('Admin'),
-                                backgroundColor: Color(0xFF6366F1),
-                                labelStyle: TextStyle(color: Colors.white, fontSize: 12),
-                              )
-                            : null,
-                      );
-                    },
-                  ),
-                ),
-                
-                // Action Buttons
-                if (group.totalBudget > 0)
-                  SizedBox(
-                    width: double.infinity,
-                    child: ElevatedButton(
-                      onPressed: () {
-                        Navigator.pop(context);
-                        Navigator.pushNamed(context, '/wallet');
-                      },
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFF6366F1),
-                        foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(vertical: 16),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                      ),
-                      child: const Text(
-                        'Ver Billetera del Grupo',
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ),
-                  ),
-              ],
+                ],
+              ),
             ),
-          ),
-        );
-      },
     );
+  }
+
+  Widget _buildStat({
+    required IconData icon,
+    required String label,
+    required String value,
+  }) {
+    return Column(
+      children: [
+        Icon(icon, color: const Color(0xFF6366F1)),
+        const SizedBox(height: 4),
+        Text(
+          value,
+          style: const TextStyle(
+            fontSize: 18,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        Text(
+          label,
+          style: const TextStyle(
+            fontSize: 12,
+            color: Colors.grey,
+          ),
+        ),
+      ],
+    );
+  }
+
+  String _formatDate(DateTime? date) {
+    if (date == null) return 'N/A';
+    return '${date.day}/${date.month}/${date.year}';
+  }
+
+  Future<void> _removeMember(String memberId) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Confirmar'),
+        content: const Text('¿Estás seguro de querer eliminar este miembro?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancelar'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            child: const Text('Eliminar'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true) {
+      try {
+        await ApiService.removeMemberFromGroup(widget.group.id!, memberId);
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Miembro eliminado exitosamente'),
+              backgroundColor: Colors.green,
+            ),
+          );
+          Navigator.pop(context);
+          widget.onGroupUpdated();
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Error eliminando miembro: $e'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+      }
+    }
   }
 }

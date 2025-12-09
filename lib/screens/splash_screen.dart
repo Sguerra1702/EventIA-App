@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../services/auth_service.dart';
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
@@ -105,14 +106,15 @@ class _SplashScreenState extends State<SplashScreen>
                   ),
                 ),
                 const Spacer(),
-                // Get Started Button
+                // Login Button
                 FadeTransition(
                   opacity: _fadeAnimation,
                   child: SizedBox(
                     width: double.infinity,
                     child: ElevatedButton(
                       onPressed: () {
-                        Navigator.pushReplacementNamed(context, '/home');
+                        print('🔐 [SplashScreen] User selected: Login/Register');
+                        Navigator.pushReplacementNamed(context, '/login');
                       },
                       style: ElevatedButton.styleFrom(
                         backgroundColor: Colors.white,
@@ -124,7 +126,37 @@ class _SplashScreenState extends State<SplashScreen>
                         elevation: 4,
                       ),
                       child: const Text(
-                        'Comenzar',
+                        'Iniciar Sesión / Registrarse',
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                // Guest Button
+                FadeTransition(
+                  opacity: _fadeAnimation,
+                  child: SizedBox(
+                    width: double.infinity,
+                    child: OutlinedButton(
+                      onPressed: () {
+                        print('👤 [SplashScreen] User selected: Guest mode');
+                        AuthService().setGuestMode();
+                        Navigator.pushReplacementNamed(context, '/home');
+                      },
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: Colors.white,
+                        side: const BorderSide(color: Colors.white, width: 2),
+                        padding: const EdgeInsets.symmetric(vertical: 16),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(30),
+                        ),
+                      ),
+                      child: const Text(
+                        'Continuar como Invitado',
                         style: TextStyle(
                           fontSize: 18,
                           fontWeight: FontWeight.w600,

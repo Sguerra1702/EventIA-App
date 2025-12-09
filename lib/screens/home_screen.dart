@@ -3,8 +3,8 @@ import 'main_screen.dart';
 import 'my_events_screen.dart';
 import 'my_groups_screen.dart';
 import 'wallet_screen.dart';
-import 'login_screen.dart';
 import '../data/mock_data.dart';
+import '../services/auth_service.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -15,6 +15,7 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   int _currentIndex = 0;
+  final AuthService _authService = AuthService();
 
   final List<Widget> _screens = [
     const MainScreen(),
@@ -22,6 +23,64 @@ class _HomeScreenState extends State<HomeScreen> {
     const MyGroupsScreen(),
     const WalletScreen(),
   ];
+
+  void _showGuestDialog() {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+          ),
+          title: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF6366F1).withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: const Icon(
+                  Icons.person_off,
+                  color: Color(0xFF6366F1),
+                  size: 24,
+                ),
+              ),
+              const SizedBox(width: 12),
+              const Text('Cuenta Requerida'),
+            ],
+          ),
+          content: const Text(
+            'Necesitas tener una cuenta para acceder a esta funcionalidad.\n\n'
+            '¿Te gustaría iniciar sesión o crear una cuenta?',
+            style: TextStyle(fontSize: 16),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text(
+                'Cancelar',
+                style: TextStyle(color: Colors.grey),
+              ),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                Navigator.pop(context);
+                Navigator.pushNamed(context, '/login');
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF6366F1),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10),
+                ),
+              ),
+              child: const Text('Ir a Login'),
+            ),
+          ],
+        );
+      },
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -74,6 +133,11 @@ class _HomeScreenState extends State<HomeScreen> {
     
     return InkWell(
       onTap: () {
+        // Check if guest is trying to access restricted features
+        if (_authService.isGuest && (index == 2 || index == 3)) {
+          _showGuestDialog();
+          return;
+        }
         setState(() {
           _currentIndex = index;
         });
@@ -126,6 +190,7 @@ class MainScreenWithUser extends StatefulWidget {
 
 class _MainScreenWithUserState extends State<MainScreenWithUser> {
   int _currentRecommendationIndex = 0;
+  final AuthService _authService = AuthService();
 
   @override
   void initState() {
@@ -194,17 +259,14 @@ class _MainScreenWithUserState extends State<MainScreenWithUser> {
         actions: [
           InkWell(
             onTap: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (context) => const LoginScreen()),
-              );
+              if (_authService.isAuthenticated || _authService.isGuest) {
+                Navigator.pushNamed(context, '/profile');
+              } else {
+                Navigator.pushNamed(context, '/login');
+              }
             },
             borderRadius: BorderRadius.circular(18),
-            child: CircleAvatar(
-              radius: 18,
-              backgroundColor: Colors.grey[300],
-              child: const Icon(Icons.person, color: Colors.grey, size: 20),
-            ),
+            child: _buildUserAvatar(),
           ),
           const SizedBox(width: 16),
         ],
@@ -483,5 +545,36 @@ class _MainScreenWithUserState extends State<MainScreenWithUser> {
         ),
       ],
     );
+  }
+
+  Widget _buildUserAvatar() {
+    final user = _authService.currentUser;
+    final googleUser = _authService.googleUser;
+    
+    if (_authService.isAuthenticated && (user?.picture != null && user!.picture.isNotEmpty)) {
+      return CircleAvatar(
+        radius: 18,
+        backgroundImage: NetworkImage(user.picture),
+        backgroundColor: const Color(0xFF6366F1),
+      );
+    } else if (_authService.isAuthenticated && googleUser?.photoUrl != null) {
+      return CircleAvatar(
+        radius: 18,
+        backgroundImage: NetworkImage(googleUser!.photoUrl!),
+        backgroundColor: const Color(0xFF6366F1),
+      );
+    } else if (_authService.isGuest) {
+      return CircleAvatar(
+        radius: 18,
+        backgroundColor: Colors.orange[300],
+        child: const Icon(Icons.person, color: Colors.white, size: 20),
+      );
+    } else {
+      return CircleAvatar(
+        radius: 18,
+        backgroundColor: Colors.grey[300],
+        child: const Icon(Icons.person, color: Colors.grey, size: 20),
+      );
+    }
   }
 }

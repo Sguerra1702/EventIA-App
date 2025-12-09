@@ -1,4 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
+import '../services/auth_service.dart';
+import '../widgets/google_sign_in_button.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -9,6 +12,93 @@ class LoginScreen extends StatefulWidget {
 
 class _LoginScreenState extends State<LoginScreen> {
   bool _isLogin = true;
+  bool _isLoading = false;
+  final AuthService _authService = AuthService();
+
+  @override
+  void initState() {
+    super.initState();
+    // Escuchar cambios de autenticación (para web GSI)
+    _authService.addAuthChangeListener(_onAuthChanged);
+  }
+
+  @override
+  void dispose() {
+    _authService.removeAuthChangeListener(_onAuthChanged);
+    super.dispose();
+  }
+
+  void _onAuthChanged() {
+    // Llamado cuando la autenticación cambia (ej: login web exitoso)
+    if (_authService.isAuthenticated && mounted) {
+      print("🎯 Auth changed, navigating to home...");
+      Navigator.pushReplacementNamed(context, '/home');
+    }
+  }
+
+  Future<void> _handleGoogleSignIn() async {
+    setState(() {
+      _isLoading = true;
+    });
+
+    try {
+      final success = await _authService.signInWithGoogle();
+      
+      if (success && mounted) {
+        // Navigate to home screen on successful login
+        Navigator.pushReplacementNamed(context, '/home');
+      } else if (mounted) {
+        // Show error if sign in was cancelled or failed
+        String message = 'Inicio de sesión cancelado';
+        
+        // Show additional message for web if not configured
+        if (kIsWeb) {
+          message = 'Inicio de sesión cancelado.\n\nSi ves un error, asegúrate de configurar el Client ID de Google en web/index.html (ver WEB_SETUP.md)';
+        }
+        
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(message),
+            backgroundColor: Colors.orange,
+            duration: const Duration(seconds: 5),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        String errorMessage = 'Error al iniciar sesión';
+        
+        if (kIsWeb && e.toString().contains('ClientID')) {
+          errorMessage = 'Google Sign In no está configurado para web.\n\n'
+              'Por favor revisa el archivo WEB_SETUP.md para instrucciones.\n\n'
+              'Por ahora, puedes usar "Continuar como Invitado" desde la pantalla inicial.';
+        } else if (!kIsWeb && e.toString().contains('sign_in_failed')) {
+          errorMessage = 'Google Sign In no está configurado para Android.\n\n'
+              'Se requiere configuración de Firebase:\n'
+              '• Archivo google-services.json\n'
+              '• SHA-1 en Firebase Console\n'
+              '• OAuth 2.0 Client ID\n\n'
+              'Por ahora, puedes usar "Continuar como Invitado".';
+        } else {
+          errorMessage = 'Error al iniciar sesión: ${e.toString()}';
+        }
+        
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(errorMessage),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 8),
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -102,7 +192,7 @@ class _LoginScreenState extends State<LoginScreen> {
             SizedBox(
               width: double.infinity,
               child: ElevatedButton(
-                onPressed: () => _showConstructionDialog(),
+                onPressed: _isLoading ? null : _showConstructionDialog,
                 style: ElevatedButton.styleFrom(
                   backgroundColor: const Color(0xFF6366F1),
                   foregroundColor: Colors.white,
@@ -112,13 +202,22 @@ class _LoginScreenState extends State<LoginScreen> {
                   ),
                   elevation: 2,
                 ),
-                child: Text(
-                  _isLogin ? 'Iniciar Sesión' : 'Crear Cuenta',
-                  style: const TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
+                child: _isLoading
+                    ? const SizedBox(
+                        height: 20,
+                        width: 20,
+                        child: CircularProgressIndicator(
+                          color: Colors.white,
+                          strokeWidth: 2,
+                        ),
+                      )
+                    : Text(
+                        _isLogin ? 'Iniciar Sesión' : 'Crear Cuenta',
+                        style: const TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
               ),
             ),
             
@@ -173,24 +272,12 @@ class _LoginScreenState extends State<LoginScreen> {
             
             const SizedBox(height: 24),
             
-            Row(
-              children: [
-                Expanded(
-                  child: _buildSocialButton(
-                    'Google',
-                    Icons.g_mobiledata,
-                    Colors.red,
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: _buildSocialButton(
-                    'Facebook',
-                    Icons.facebook,
-                    Colors.blue,
-                  ),
-                ),
-              ],
+            // Google Sign-In Button
+            Center(
+              child: GoogleSignInButton(
+                onPressed: _handleGoogleSignIn,
+                isLoading: _isLoading,
+              ),
             ),
           ],
         ),
@@ -222,28 +309,6 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
 
-  Widget _buildSocialButton(String label, IconData icon, Color color) {
-    return OutlinedButton(
-      onPressed: () => _showConstructionDialog(),
-      style: OutlinedButton.styleFrom(
-        foregroundColor: color,
-        side: BorderSide(color: Colors.grey[300]!),
-        padding: const EdgeInsets.symmetric(vertical: 12),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(12),
-        ),
-      ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(icon, size: 20),
-          const SizedBox(width: 8),
-          Text(label),
-        ],
-      ),
-    );
-  }
-
   void _showConstructionDialog() {
     showDialog(
       context: context,
@@ -259,8 +324,8 @@ class _LoginScreenState extends State<LoginScreen> {
           ],
         ),
         content: const Text(
-          'Esta funcionalidad está actualmente en desarrollo. '
-          '¡Pronto estará disponible!',
+          'La funcionalidad de autenticación se conectará con el backend próximamente.\n\n'
+          'Por ahora puedes continuar como invitado desde la pantalla de inicio.',
           style: TextStyle(fontSize: 16),
         ),
         actions: [

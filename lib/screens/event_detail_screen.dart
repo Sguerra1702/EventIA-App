@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../models/event.dart';
+import '../services/auth_service.dart';
 
 class EventDetailScreen extends StatefulWidget {
   final Event event;
@@ -13,6 +14,65 @@ class EventDetailScreen extends StatefulWidget {
 class _EventDetailScreenState extends State<EventDetailScreen> {
   bool _isAttending = false;
   bool _isFavorite = false;
+  final AuthService _authService = AuthService();
+
+  void _showGuestDialog() {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+          ),
+          title: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF6366F1).withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: const Icon(
+                  Icons.person_off,
+                  color: Color(0xFF6366F1),
+                  size: 24,
+                ),
+              ),
+              const SizedBox(width: 12),
+              const Text('Cuenta Requerida'),
+            ],
+          ),
+          content: const Text(
+            'Necesitas tener una cuenta para asistir a eventos.\n\n'
+            '¿Te gustaría iniciar sesión o crear una cuenta?',
+            style: TextStyle(fontSize: 16),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text(
+                'Cancelar',
+                style: TextStyle(color: Colors.grey),
+              ),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                Navigator.pop(context);
+                Navigator.pushNamed(context, '/login');
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF6366F1),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10),
+                ),
+              ),
+              child: const Text('Ir a Login'),
+            ),
+          ],
+        );
+      },
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -315,6 +375,12 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
             width: MediaQuery.of(context).size.width - 40,
             child: FloatingActionButton.extended(
               onPressed: () {
+                // Check if user is guest
+                if (_authService.isGuest) {
+                  _showGuestDialog();
+                  return;
+                }
+                
                 setState(() {
                   _isAttending = !_isAttending;
                 });

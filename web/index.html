@@ -1,38 +1,76 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <!--
-    If you are serving your web app in a path other than the root, change the
-    href value below to reflect the base path you are serving from.
-
-    The path provided below has to start and end with a slash "/" in order for
-    it to work correctly.
-
-    For more details:
-    * https://developer.mozilla.org/en-US/docs/Web/HTML/Element/base
-
-    This is a placeholder for base href that will be replaced by the value of
-    the `--base-href` argument provided to `flutter build`.
-  -->
   <base href="$FLUTTER_BASE_HREF">
-
   <meta charset="UTF-8">
   <meta content="IE=Edge" http-equiv="X-UA-Compatible">
-  <meta name="description" content="A new Flutter project.">
-
-  <!-- iOS meta tags & icons -->
-  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="description" content="EventIA Flutter App">
+  <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black">
-  <meta name="apple-mobile-web-app-title" content="eventia_app">
+  <meta name="apple-mobile-web-app-title" content="EventIA">
+  <meta name="google-signin-client_id" content="590803344083-5bm93f67a1ln4p8m5fftnmpa4veq6cd2.apps.googleusercontent.com">
   <link rel="apple-touch-icon" href="icons/Icon-192.png">
-
-  <!-- Favicon -->
   <link rel="icon" type="image/png" href="favicon.png"/>
-
-  <title>eventia_app</title>
+  <title>EventIA</title>
   <link rel="manifest" href="manifest.json">
+
+  <script>
+    var serviceWorkerVersion = null;
+  </script>
+
+  <script src="flutter.js" defer></script>
+
+  <!-- Google Identity Services SDK -->
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
+
+  <script>
+    // Recibe el credential (ID token) y lo envía a Flutter
+    function handleCredentialResponse(response) {
+      console.log("✅ Google credential received");
+      window.dispatchEvent(
+        new CustomEvent("google_credential", {
+          detail: response.credential,
+        })
+      );
+    }
+
+    // Inicializa GSI cuando se carga el SDK
+    window.onload = function() {
+      if (window.google) {
+        google.accounts.id.initialize({
+          client_id: "590803344083-5bm93f67a1ln4p8m5fftnmpa4veq6cd2.apps.googleusercontent.com",
+          callback: handleCredentialResponse
+        });
+        console.log("✅ GSI initialized");
+      }
+    };
+  </script>
+
+  <style>
+    body {
+      margin: 0;
+      padding: 0;
+      background-color: #6366F1;
+    }
+  </style>
 </head>
 <body>
-  <script src="flutter_bootstrap.js" async></script>
+  <!-- Container for Google Sign-In button -->
+  <div id="googleSignInButton"></div>
+
+  <script>
+    window.addEventListener('load', function(ev) {
+      _flutter.loader.loadEntrypoint({
+        serviceWorker: {
+          serviceWorkerVersion: serviceWorkerVersion,
+        },
+        onEntrypointLoaded: function(engineInitializer) {
+          engineInitializer.initializeEngine().then(function(appRunner) {
+            appRunner.runApp();
+          });
+        }
+      });
+    });
+  </script>
 </body>
 </html>

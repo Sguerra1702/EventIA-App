@@ -3,8 +3,10 @@ import 'main_screen.dart';
 import 'my_events_screen.dart';
 import 'my_groups_screen.dart';
 import 'wallet_screen.dart';
-import '../data/mock_data.dart';
 import '../services/auth_service.dart';
+import '../services/api_service.dart';
+import '../models/event.dart';
+import '../models/group.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -130,7 +132,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Widget _buildNavItem(int index, IconData icon, String label) {
     final isSelected = _currentIndex == index;
-    
+
     return InkWell(
       onTap: () {
         // Check if guest is trying to access restricted features
@@ -146,7 +148,7 @@ class _HomeScreenState extends State<HomeScreen> {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
         decoration: BoxDecoration(
-          color: isSelected 
+          color: isSelected
               ? const Color(0xFF6366F1).withOpacity(0.1)
               : Colors.transparent,
           borderRadius: BorderRadius.circular(12),
@@ -156,22 +158,16 @@ class _HomeScreenState extends State<HomeScreen> {
           children: [
             Icon(
               icon,
-              color: isSelected 
-                  ? const Color(0xFF6366F1)
-                  : Colors.grey,
+              color: isSelected ? const Color(0xFF6366F1) : Colors.grey,
               size: 24,
             ),
             const SizedBox(height: 4),
             Text(
               label,
               style: TextStyle(
-                color: isSelected 
-                    ? const Color(0xFF6366F1)
-                    : Colors.grey,
+                color: isSelected ? const Color(0xFF6366F1) : Colors.grey,
                 fontSize: 12,
-                fontWeight: isSelected 
-                    ? FontWeight.w600
-                    : FontWeight.normal,
+                fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
               ),
             ),
           ],
@@ -191,19 +187,95 @@ class MainScreenWithUser extends StatefulWidget {
 class _MainScreenWithUserState extends State<MainScreenWithUser> {
   int _currentRecommendationIndex = 0;
   final AuthService _authService = AuthService();
+  List<Event> _recommendations = [];
+  List<String> _categories = [];
+  bool _isLoading = true;
+  
+  // Estadísticas reales
+  int _totalEvents = 0;
+  int _confirmedEvents = 0;
+  int _myGroups = 0;
+  int _upcomingEvents = 0;
 
   @override
   void initState() {
     super.initState();
-    // Auto-rotate recommendations
-    Future.delayed(const Duration(seconds: 3), _rotateRecommendation);
+    _loadData();
+  }
+
+  Future<void> _loadData() async {
+    if (!mounted) return;
+
+    setState(() {
+      _isLoading = true;
+    });
+
+    try {
+      // Cargar todos los eventos
+      final events = await ApiService.getAllEvents();
+      final categories = events.map((e) => e.category).toSet().toList();
+      categories.sort();
+
+      // Cargar estadísticas del usuario
+      int confirmedCount = 0;
+      int groupsCount = 0;
+      
+      if (_authService.isAuthenticated) {
+        try {
+          // Obtener eventos confirmados por el usuario
+          final confirmedEvents = await ApiService.getUserConfirmedEvents();
+          confirmedCount = confirmedEvents.length;
+          
+          // Obtener grupos del usuario
+          final user = await AuthService.getCurrentUser();
+          if (user?.id != null) {
+            final groups = await ApiService.getGroupsByMember(user!.id);
+            groupsCount = groups.length;
+          }
+        } catch (e) {
+          print('Error loading user stats: $e');
+        }
+      }
+
+      // Calcular eventos próximos (próximos 30 días)
+      final now = DateTime.now();
+      final thirtyDaysFromNow = now.add(const Duration(days: 30));
+      final upcoming = events.where((e) => 
+        e.date.isAfter(now) && e.date.isBefore(thirtyDaysFromNow)
+      ).length;
+
+      if (!mounted) return;
+
+      setState(() {
+        _recommendations = events.take(5).toList();
+        _categories = categories;
+        _totalEvents = events.length;
+        _confirmedEvents = confirmedCount;
+        _myGroups = groupsCount;
+        _upcomingEvents = upcoming;
+        _isLoading = false;
+      });
+
+      if (_recommendations.isNotEmpty) {
+        Future.delayed(const Duration(seconds: 3), _rotateRecommendation);
+      }
+    } catch (e) {
+      if (!mounted) return;
+
+      setState(() {
+        _isLoading = false;
+      });
+      print('Error loading data: $e');
+      _recommendations = [];
+      _categories = [];
+    }
   }
 
   void _rotateRecommendation() {
-    if (mounted) {
+    if (mounted && _recommendations.isNotEmpty) {
       setState(() {
-        _currentRecommendationIndex = 
-            (_currentRecommendationIndex + 1) % MockEventData.getAIRecommendations().length;
+        _currentRecommendationIndex =
+            (_currentRecommendationIndex + 1) % _recommendations.length;
       });
       Future.delayed(const Duration(seconds: 4), _rotateRecommendation);
     }
@@ -211,8 +283,12 @@ class _MainScreenWithUserState extends State<MainScreenWithUser> {
 
   @override
   Widget build(BuildContext context) {
-    final recommendations = MockEventData.getAIRecommendations();
-    final categories = MockEventData.getCategories();
+    if (_isLoading) {
+      return const Scaffold(
+        backgroundColor: Colors.grey,
+        body: Center(child: CircularProgressIndicator()),
+      );
+    }
 
     return Scaffold(
       backgroundColor: Colors.grey[50],
@@ -315,21 +391,30 @@ class _MainScreenWithUserState extends State<MainScreenWithUser> {
                   const SizedBox(height: 12),
                   AnimatedSwitcher(
                     duration: const Duration(milliseconds: 500),
-                    child: Text(
-                      recommendations[_currentRecommendationIndex],
-                      key: ValueKey(_currentRecommendationIndex),
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 16,
-                        height: 1.4,
-                      ),
-                    ),
+                    child: _recommendations.isEmpty
+                        ? const Text(
+                            'Cargando recomendaciones...',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 16,
+                              height: 1.4,
+                            ),
+                          )
+                        : Text(
+                            _recommendations[_currentRecommendationIndex].title,
+                            key: ValueKey(_currentRecommendationIndex),
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 16,
+                              height: 1.4,
+                            ),
+                          ),
                   ),
                 ],
               ),
             ),
             const SizedBox(height: 24),
-            
+
             // Explore Events Button
             SizedBox(
               width: double.infinity,
@@ -364,7 +449,7 @@ class _MainScreenWithUserState extends State<MainScreenWithUser> {
               ),
             ),
             const SizedBox(height: 32),
-            
+
             // Quick Categories
             const Text(
               'Categorías Populares',
@@ -375,7 +460,7 @@ class _MainScreenWithUserState extends State<MainScreenWithUser> {
               ),
             ),
             const SizedBox(height: 16),
-            
+
             // Categories Grid
             GridView.builder(
               shrinkWrap: true,
@@ -386,9 +471,9 @@ class _MainScreenWithUserState extends State<MainScreenWithUser> {
                 crossAxisSpacing: 12,
                 mainAxisSpacing: 12,
               ),
-              itemCount: categories.length,
+              itemCount: _categories.length,
               itemBuilder: (context, index) {
-                final category = categories[index];
+                final category = _categories[index];
                 final icons = [
                   Icons.music_note,
                   Icons.restaurant,
@@ -405,11 +490,11 @@ class _MainScreenWithUserState extends State<MainScreenWithUser> {
                   Colors.blue,
                   Colors.teal,
                 ];
-                
+
                 return InkWell(
                   onTap: () {
                     Navigator.pushNamed(
-                      context, 
+                      context,
                       '/events',
                       arguments: {'category': category},
                     );
@@ -426,11 +511,7 @@ class _MainScreenWithUserState extends State<MainScreenWithUser> {
                     ),
                     child: Row(
                       children: [
-                        Icon(
-                          icons[index],
-                          color: colors[index],
-                          size: 24,
-                        ),
+                        Icon(icons[index], color: colors[index], size: 24),
                         const SizedBox(width: 12),
                         Expanded(
                           child: Text(
@@ -449,7 +530,7 @@ class _MainScreenWithUserState extends State<MainScreenWithUser> {
               },
             ),
             const SizedBox(height: 32),
-            
+
             // Recent Activity or Quick Stats
             Container(
               padding: const EdgeInsets.all(20),
@@ -477,31 +558,59 @@ class _MainScreenWithUserState extends State<MainScreenWithUser> {
                     ),
                   ),
                   const SizedBox(height: 16),
-                  Row(
+                  Column(
                     children: [
-                      Expanded(
-                        child: _buildStatItem(
-                          'Eventos\nDisponibles',
-                          '${MockEventData.getAllEvents().length}',
-                          Icons.event_available,
-                          Colors.blue,
-                        ),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: _buildStatItem(
+                              'Eventos\nTotales',
+                              '$_totalEvents',
+                              Icons.event_available,
+                              Colors.blue,
+                            ),
+                          ),
+                          Expanded(
+                            child: _buildStatItem(
+                              'Mis\nEventos',
+                              '$_confirmedEvents',
+                              Icons.event_seat,
+                              Colors.purple,
+                            ),
+                          ),
+                          Expanded(
+                            child: _buildStatItem(
+                              'Mis\nGrupos',
+                              '$_myGroups',
+                              Icons.groups,
+                              Colors.orange,
+                            ),
+                          ),
+                        ],
                       ),
-                      Expanded(
-                        child: _buildStatItem(
-                          'Cerca\nde Ti',
-                          '${MockEventData.getAllEvents().where((e) => e.getDistanceText().contains('0.')).length}',
-                          Icons.location_on,
-                          Colors.green,
-                        ),
-                      ),
-                      Expanded(
-                        child: _buildStatItem(
-                          'Esta\nSemana',
-                          '${MockEventData.getAllEvents().where((e) => e.date.difference(DateTime.now()).inDays <= 7).length}',
-                          Icons.calendar_today,
-                          Colors.orange,
-                        ),
+                      const SizedBox(height: 16),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: _buildStatItem(
+                              'Categorías',
+                              '${_categories.length}',
+                              Icons.category,
+                              Colors.green,
+                            ),
+                          ),
+                          Expanded(
+                            child: _buildStatItem(
+                              'Próximos\n30 días',
+                              '$_upcomingEvents',
+                              Icons.calendar_today,
+                              Colors.teal,
+                            ),
+                          ),
+                          Expanded(
+                            child: Container(), // Espacio vacío para balance
+                          ),
+                        ],
                       ),
                     ],
                   ),
@@ -514,7 +623,12 @@ class _MainScreenWithUserState extends State<MainScreenWithUser> {
     );
   }
 
-  Widget _buildStatItem(String label, String value, IconData icon, Color color) {
+  Widget _buildStatItem(
+    String label,
+    String value,
+    IconData icon,
+    Color color,
+  ) {
     return Column(
       children: [
         Container(
@@ -538,10 +652,7 @@ class _MainScreenWithUserState extends State<MainScreenWithUser> {
         Text(
           label,
           textAlign: TextAlign.center,
-          style: const TextStyle(
-            fontSize: 12,
-            color: Colors.grey,
-          ),
+          style: const TextStyle(fontSize: 12, color: Colors.grey),
         ),
       ],
     );
@@ -550,8 +661,9 @@ class _MainScreenWithUserState extends State<MainScreenWithUser> {
   Widget _buildUserAvatar() {
     final user = _authService.currentUser;
     final googleUser = _authService.googleUser;
-    
-    if (_authService.isAuthenticated && (user?.picture != null && user!.picture.isNotEmpty)) {
+
+    if (_authService.isAuthenticated &&
+        (user?.picture != null && user!.picture.isNotEmpty)) {
       return CircleAvatar(
         radius: 18,
         backgroundImage: NetworkImage(user.picture),

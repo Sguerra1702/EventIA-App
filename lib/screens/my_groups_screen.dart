@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../models/group.dart';
+import '../models/event.dart';
 import '../services/api_service.dart';
 import '../services/auth_service.dart';
 
@@ -946,6 +947,90 @@ class _GroupDetailsSheetState extends State<_GroupDetailsSheet> {
                     ),
                   ),
                   const SizedBox(height: 24),
+                  
+                  // Event Assignment Section
+                  if (_isUserCreator) ...[
+                    Container(
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF6366F1).withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: const Color(0xFF6366F1).withOpacity(0.3),
+                        ),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              const Icon(Icons.event, color: Color(0xFF6366F1)),
+                              const SizedBox(width: 8),
+                              const Text(
+                                'Evento del Grupo',
+                                style: TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 12),
+                          if (widget.group.eventId != null) ...[
+                            Text(
+                              'Evento asignado: ${widget.group.eventId}',
+                              style: const TextStyle(fontSize: 14),
+                            ),
+                            const SizedBox(height: 8),
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: OutlinedButton.icon(
+                                    onPressed: () => _removeEventFromGroup(),
+                                    icon: const Icon(Icons.remove_circle_outline),
+                                    label: const Text('Quitar Evento'),
+                                    style: OutlinedButton.styleFrom(
+                                      foregroundColor: Colors.red,
+                                      side: const BorderSide(color: Colors.red),
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: ElevatedButton.icon(
+                                    onPressed: () => _confirmGroupAttendance(),
+                                    icon: const Icon(Icons.group_add),
+                                    label: const Text('Confirmar Grupo'),
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor: Colors.green,
+                                      foregroundColor: Colors.white,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ] else ...[
+                            const Text(
+                              'No hay evento asignado a este grupo',
+                              style: TextStyle(fontSize: 14, color: Colors.grey),
+                            ),
+                            const SizedBox(height: 8),
+                            ElevatedButton.icon(
+                              onPressed: () => _assignEventToGroup(),
+                              icon: const Icon(Icons.add),
+                              label: const Text('Asignar Evento'),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: const Color(0xFF6366F1),
+                                foregroundColor: Colors.white,
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 24),
+                  ],
+                  
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -1161,6 +1246,163 @@ class _GroupDetailsSheetState extends State<_GroupDetailsSheet> {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: Text('Error eliminando miembro: $e'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+      }
+    }
+  }
+
+  Future<void> _assignEventToGroup() async {
+    try {
+      // Obtener lista de eventos disponibles
+      final events = await ApiService.getAllEvents();
+      
+      if (!mounted) return;
+
+      final selectedEvent = await showDialog<Event>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Seleccionar Evento'),
+          content: SizedBox(
+            width: double.maxFinite,
+            child: ListView.builder(
+              shrinkWrap: true,
+              itemCount: events.length,
+              itemBuilder: (context, index) {
+                final event = events[index];
+                return ListTile(
+                  title: Text(event.title),
+                  subtitle: Text(event.getFormattedDate()),
+                  onTap: () => Navigator.pop(context, event),
+                );
+              },
+            ),
+          ),
+        ),
+      );
+
+      if (selectedEvent != null && selectedEvent.id != null) {
+        await ApiService.assignEventToGroup(
+          widget.group.id!,
+          selectedEvent.id!,
+        );
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Evento asignado exitosamente'),
+              backgroundColor: Colors.green,
+            ),
+          );
+          Navigator.pop(context);
+          widget.onGroupUpdated();
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error asignando evento: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  Future<void> _removeEventFromGroup() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Confirmar'),
+        content: const Text('¿Estás seguro de querer quitar el evento de este grupo?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancelar'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            child: const Text('Quitar'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true) {
+      try {
+        await ApiService.removeEventFromGroup(widget.group.id!);
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Evento removido exitosamente'),
+              backgroundColor: Colors.green,
+            ),
+          );
+          Navigator.pop(context);
+          widget.onGroupUpdated();
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Error removiendo evento: $e'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+      }
+    }
+  }
+
+  Future<void> _confirmGroupAttendance() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Confirmar Asistencia Grupal'),
+        content: Text(
+          '¿Confirmar asistencia de todos los ${widget.group.memberCount} miembros al evento asignado?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancelar'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.green,
+            ),
+            child: const Text('Confirmar'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true) {
+      try {
+        final result = await ApiService.confirmGroupAttendance(widget.group.id!);
+        
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                'Asistencia confirmada para ${result['confirmedMembers']} miembros',
+              ),
+              backgroundColor: Colors.green,
+            ),
+          );
+          Navigator.pop(context);
+          widget.onGroupUpdated();
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Error confirmando asistencia: $e'),
               backgroundColor: Colors.red,
             ),
           );

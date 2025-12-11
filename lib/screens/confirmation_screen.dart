@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../models/event.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 class ConfirmationScreen extends StatefulWidget {
   final Event event;
@@ -41,6 +42,85 @@ class _ConfirmationScreenState extends State<ConfirmationScreen>
     ));
 
     _controller.forward();
+    
+    // Agregar automáticamente al calendario al confirmar
+    _addToGoogleCalendar();
+  }
+
+  Future<void> _addToGoogleCalendar() async {
+    try {
+      // Formatear la fecha en formato ISO 8601 para Google Calendar
+      final startDate = widget.event.date;
+      final endDate = startDate.add(
+        const Duration(hours: 2),
+      ); // Duración estimada de 2 horas
+
+      // Formatear fechas en milisegundos desde epoch para el intent de Android
+      final startMillis = startDate.millisecondsSinceEpoch;
+      final endMillis = endDate.millisecondsSinceEpoch;
+
+      // Codificar los datos del evento
+      final title = Uri.encodeComponent(widget.event.title);
+      final description = Uri.encodeComponent(widget.event.description);
+      final location = Uri.encodeComponent(widget.event.location);
+
+      // Intentar primero con el intent nativo de Android Calendar
+      final intentUri = Uri.parse(
+        'content://com.android.calendar/time/$startMillis'
+        '?title=$title'
+        '&description=$description'
+        '&eventLocation=$location'
+        '&beginTime=$startMillis'
+        '&endTime=$endMillis',
+      );
+
+      bool launched = false;
+
+      // Intentar abrir con la app nativa de Calendar
+      try {
+        if (await canLaunchUrl(intentUri)) {
+          launched = await launchUrl(
+            intentUri,
+            mode: LaunchMode.externalApplication,
+          );
+        }
+      } catch (_) {
+        // Si falla el intent nativo, continuar con la URL web
+      }
+
+      // Si no funcionó el intent nativo, usar URL web de Google Calendar
+      if (!launched) {
+        // Formatear fechas para Google Calendar web (formato: YYYYMMDDTHHmmssZ)
+        String formatDateForCalendar(DateTime date) {
+          return date
+                  .toUtc()
+                  .toIso8601String()
+                  .replaceAll(RegExp(r'[-:]'), '')
+                  .split('.')[0] +
+              'Z';
+        }
+
+        final startDateStr = formatDateForCalendar(startDate);
+        final endDateStr = formatDateForCalendar(endDate);
+
+        final calendarUrl = Uri.parse(
+          'https://www.google.com/calendar/render?action=TEMPLATE'
+          '&text=$title'
+          '&dates=$startDateStr/$endDateStr'
+          '&details=$description'
+          '&location=$location'
+          '&sf=true'
+          '&output=xml',
+        );
+
+        launched = await launchUrl(
+          calendarUrl,
+          mode: LaunchMode.externalApplication,
+        );
+      }
+    } catch (e) {
+      // Silenciosamente fallar si no se puede agregar al calendario
+    }
   }
 
   @override
@@ -198,17 +278,17 @@ class _ConfirmationScreenState extends State<ConfirmationScreen>
                         
                         _buildFeatureItem(
                           Icons.calendar_month,
-                          'Evento agregado a tu calendario',
+                          'Evento agregado a Google Calendar',
                         ),
                         const SizedBox(height: 8),
                         _buildFeatureItem(
                           Icons.notifications,
-                          'Recordatorio configurado (1 hora antes)',
+                          'Podrás configurar recordatorios en Calendar',
                         ),
                         const SizedBox(height: 8),
                         _buildFeatureItem(
-                          Icons.directions,
-                          'Direcciones guardadas',
+                          Icons.favorite,
+                          'Evento guardado en tus favoritos',
                         ),
                       ],
                     ),

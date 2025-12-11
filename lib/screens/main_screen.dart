@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
-import '../data/mock_data.dart';
+import '../models/event.dart';
+import '../services/api_service.dart';
 
 class MainScreen extends StatefulWidget {
   const MainScreen({super.key});
@@ -10,19 +11,62 @@ class MainScreen extends StatefulWidget {
 
 class _MainScreenState extends State<MainScreen> {
   int _currentRecommendationIndex = 0;
+  List<Event> _recommendations = [];
+  List<String> _categories = [];
+  bool _isLoading = true;
 
   @override
   void initState() {
     super.initState();
-    // Auto-rotate recommendations
-    Future.delayed(const Duration(seconds: 3), _rotateRecommendation);
+    _loadData();
+  }
+
+  Future<void> _loadData() async {
+    if (!mounted) return;
+
+    setState(() {
+      _isLoading = true;
+    });
+
+    try {
+      final events = await ApiService.getAllEvents();
+
+      // Get unique categories
+      final categories = events.map((e) => e.category).toSet().toList();
+      categories.sort();
+
+      if (!mounted) return;
+
+      setState(() {
+        _recommendations = events
+            .take(5)
+            .toList(); // Tomar los primeros 5 como recomendaciones
+        _categories = categories;
+        _isLoading = false;
+      });
+
+      // Start auto-rotation after loading
+      if (_recommendations.isNotEmpty) {
+        Future.delayed(const Duration(seconds: 3), _rotateRecommendation);
+      }
+    } catch (e) {
+      if (!mounted) return;
+
+      setState(() {
+        _isLoading = false;
+      });
+      print('Error loading data: $e');
+      // Fallback to empty lists
+      _recommendations = [];
+      _categories = [];
+    }
   }
 
   void _rotateRecommendation() {
-    if (mounted) {
+    if (mounted && _recommendations.isNotEmpty) {
       setState(() {
-        _currentRecommendationIndex = 
-            (_currentRecommendationIndex + 1) % MockEventData.getAIRecommendations().length;
+        _currentRecommendationIndex =
+            (_currentRecommendationIndex + 1) % _recommendations.length;
       });
       Future.delayed(const Duration(seconds: 4), _rotateRecommendation);
     }
@@ -30,8 +74,12 @@ class _MainScreenState extends State<MainScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final recommendations = MockEventData.getAIRecommendations();
-    final categories = MockEventData.getCategories();
+    if (_isLoading) {
+      return const Scaffold(
+        backgroundColor: Colors.grey,
+        body: Center(child: CircularProgressIndicator()),
+      );
+    }
 
     return Scaffold(
       backgroundColor: Colors.grey[50],
@@ -128,21 +176,30 @@ class _MainScreenState extends State<MainScreen> {
                   const SizedBox(height: 12),
                   AnimatedSwitcher(
                     duration: const Duration(milliseconds: 500),
-                    child: Text(
-                      recommendations[_currentRecommendationIndex],
-                      key: ValueKey(_currentRecommendationIndex),
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 16,
-                        height: 1.4,
-                      ),
-                    ),
+                    child: _recommendations.isEmpty
+                        ? const Text(
+                            'Cargando recomendaciones...',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 16,
+                              height: 1.4,
+                            ),
+                          )
+                        : Text(
+                            _recommendations[_currentRecommendationIndex].title,
+                            key: ValueKey(_currentRecommendationIndex),
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 16,
+                              height: 1.4,
+                            ),
+                          ),
                   ),
                 ],
               ),
             ),
             const SizedBox(height: 24),
-            
+
             // Explore Events Button
             SizedBox(
               width: double.infinity,
@@ -177,7 +234,7 @@ class _MainScreenState extends State<MainScreen> {
               ),
             ),
             const SizedBox(height: 32),
-            
+
             // Quick Categories
             const Text(
               'Categorías Populares',
@@ -188,7 +245,7 @@ class _MainScreenState extends State<MainScreen> {
               ),
             ),
             const SizedBox(height: 16),
-            
+
             // Categories Grid
             GridView.builder(
               shrinkWrap: true,
@@ -199,9 +256,9 @@ class _MainScreenState extends State<MainScreen> {
                 crossAxisSpacing: 12,
                 mainAxisSpacing: 12,
               ),
-              itemCount: categories.length,
+              itemCount: _categories.length,
               itemBuilder: (context, index) {
-                final category = categories[index];
+                final category = _categories[index];
                 final icons = [
                   Icons.music_note,
                   Icons.restaurant,
@@ -218,11 +275,11 @@ class _MainScreenState extends State<MainScreen> {
                   Colors.blue,
                   Colors.teal,
                 ];
-                
+
                 return InkWell(
                   onTap: () {
                     Navigator.pushNamed(
-                      context, 
+                      context,
                       '/events',
                       arguments: {'category': category},
                     );
@@ -239,11 +296,7 @@ class _MainScreenState extends State<MainScreen> {
                     ),
                     child: Row(
                       children: [
-                        Icon(
-                          icons[index],
-                          color: colors[index],
-                          size: 24,
-                        ),
+                        Icon(icons[index], color: colors[index], size: 24),
                         const SizedBox(width: 12),
                         Expanded(
                           child: Text(
@@ -262,7 +315,7 @@ class _MainScreenState extends State<MainScreen> {
               },
             ),
             const SizedBox(height: 32),
-            
+
             // Recent Activity or Quick Stats
             Container(
               padding: const EdgeInsets.all(20),
@@ -295,23 +348,23 @@ class _MainScreenState extends State<MainScreen> {
                       Expanded(
                         child: _buildStatItem(
                           'Eventos\nDisponibles',
-                          '${MockEventData.getAllEvents().length}',
+                          '${_recommendations.length}',
                           Icons.event_available,
                           Colors.blue,
                         ),
                       ),
                       Expanded(
                         child: _buildStatItem(
-                          'Cerca\nde Ti',
-                          '${MockEventData.getAllEvents().where((e) => e.getDistanceText().contains('0.')).length}',
-                          Icons.location_on,
+                          'Categorías',
+                          '${_categories.length}',
+                          Icons.category,
                           Colors.green,
                         ),
                       ),
                       Expanded(
                         child: _buildStatItem(
-                          'Esta\nSemana',
-                          '${MockEventData.getAllEvents().where((e) => e.date.difference(DateTime.now()).inDays <= 7).length}',
+                          'Nuevos',
+                          '${_recommendations.where((e) => e.date.isAfter(DateTime.now())).length}',
                           Icons.calendar_today,
                           Colors.orange,
                         ),
@@ -327,7 +380,12 @@ class _MainScreenState extends State<MainScreen> {
     );
   }
 
-  Widget _buildStatItem(String label, String value, IconData icon, Color color) {
+  Widget _buildStatItem(
+    String label,
+    String value,
+    IconData icon,
+    Color color,
+  ) {
     return Column(
       children: [
         Container(
@@ -351,10 +409,7 @@ class _MainScreenState extends State<MainScreen> {
         Text(
           label,
           textAlign: TextAlign.center,
-          style: const TextStyle(
-            fontSize: 12,
-            color: Colors.grey,
-          ),
+          style: const TextStyle(fontSize: 12, color: Colors.grey),
         ),
       ],
     );

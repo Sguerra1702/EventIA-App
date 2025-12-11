@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../models/event.dart';
-import '../data/mock_data.dart';
+import '../services/api_service.dart';
+import '../services/auth_service.dart';
 
 class MyEventsScreen extends StatefulWidget {
   const MyEventsScreen({super.key});
@@ -11,17 +12,42 @@ class MyEventsScreen extends StatefulWidget {
 
 class _MyEventsScreenState extends State<MyEventsScreen> {
   List<Event> _confirmedEvents = [];
+  bool _isLoading = true;
+  String? _errorMessage;
 
   @override
   void initState() {
     super.initState();
-    // Simulamos algunos eventos confirmados
-    final allEvents = MockEventData.getAllEvents();
-    _confirmedEvents = [
-      allEvents[0], // Concierto Rock Nacional
-      allEvents[2], // Feria Gastronómica
-      allEvents[5], // Stand Up Comedy Night
-    ];
+    _loadEvents();
+  }
+
+  Future<void> _loadEvents() async {
+    if (!mounted) return;
+
+    setState(() {
+      _isLoading = true;
+      _errorMessage = null;
+    });
+
+    try {
+      // Obtener eventos confirmados directamente desde el backend
+      final confirmedEvents = await ApiService.getUserConfirmedEvents();
+
+      if (!mounted) return;
+
+      setState(() {
+        _confirmedEvents = confirmedEvents;
+        _isLoading = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+
+      setState(() {
+        _isLoading = false;
+        _errorMessage = 'Error al cargar eventos: ${e.toString()}';
+      });
+      print('Error loading events: $e');
+    }
   }
 
   @override
@@ -46,9 +72,38 @@ class _MyEventsScreenState extends State<MyEventsScreen> {
               _showFilterOptions();
             },
           ),
+          IconButton(
+            icon: const Icon(Icons.refresh, color: Colors.black87),
+            onPressed: _loadEvents,
+          ),
         ],
       ),
-      body: _confirmedEvents.isEmpty
+      body: _isLoading
+          ? const Center(child: CircularProgressIndicator())
+          : _errorMessage != null
+          ? Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Icon(Icons.error_outline, size: 60, color: Colors.red),
+                  const SizedBox(height: 16),
+                  Text(
+                    _errorMessage!,
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(fontSize: 16, color: Colors.grey),
+                  ),
+                  const SizedBox(height: 16),
+                  ElevatedButton(
+                    onPressed: _loadEvents,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF6366F1),
+                    ),
+                    child: const Text('Reintentar'),
+                  ),
+                ],
+              ),
+            )
+          : _confirmedEvents.isEmpty
           ? _buildEmptyState()
           : SingleChildScrollView(
               padding: const EdgeInsets.all(16),
@@ -58,7 +113,7 @@ class _MyEventsScreenState extends State<MyEventsScreen> {
                   // Stats Card
                   _buildStatsCard(),
                   const SizedBox(height: 24),
-                  
+
                   // Upcoming Events
                   const Text(
                     'Próximos Eventos',
@@ -69,9 +124,11 @@ class _MyEventsScreenState extends State<MyEventsScreen> {
                     ),
                   ),
                   const SizedBox(height: 16),
-                  
+
                   // Events List
-                  ...(_confirmedEvents.map((event) => _buildEventCard(event)).toList()),
+                  ...(_confirmedEvents
+                      .map((event) => _buildEventCard(event))
+                      .toList()),
                 ],
               ),
             ),
@@ -117,14 +174,16 @@ class _MyEventsScreenState extends State<MyEventsScreen> {
           Row(
             children: [
               Expanded(
-                child: _buildStatItem('Confirmados', '${_confirmedEvents.length}', Icons.check_circle),
+                child: _buildStatItem(
+                  'Confirmados',
+                  '${_confirmedEvents.length}',
+                  Icons.check_circle,
+                ),
               ),
               Expanded(
                 child: _buildStatItem('Este Mes', '2', Icons.calendar_month),
               ),
-              Expanded(
-                child: _buildStatItem('Favoritos', '5', Icons.favorite),
-              ),
+              Expanded(child: _buildStatItem('Favoritos', '5', Icons.favorite)),
             ],
           ),
         ],
@@ -154,10 +213,7 @@ class _MyEventsScreenState extends State<MyEventsScreen> {
         ),
         Text(
           label,
-          style: const TextStyle(
-            fontSize: 12,
-            color: Colors.white70,
-          ),
+          style: const TextStyle(fontSize: 12, color: Colors.white70),
         ),
       ],
     );
@@ -179,8 +235,11 @@ class _MyEventsScreenState extends State<MyEventsScreen> {
         ],
       ),
       child: InkWell(
-        onTap: () {
-          Navigator.pushNamed(context, '/event-detail', arguments: event);
+        onTap: () async {
+          // Navegar y esperar el resultado
+          await Navigator.pushNamed(context, '/event-detail', arguments: event);
+          // Recargar eventos cuando regresamos
+          _loadEvents();
         },
         borderRadius: BorderRadius.circular(16),
         child: Padding(
@@ -192,7 +251,10 @@ class _MyEventsScreenState extends State<MyEventsScreen> {
               Row(
                 children: [
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 4,
+                    ),
                     decoration: BoxDecoration(
                       color: Colors.green.withOpacity(0.1),
                       borderRadius: BorderRadius.circular(12),
@@ -225,7 +287,7 @@ class _MyEventsScreenState extends State<MyEventsScreen> {
                 ],
               ),
               const SizedBox(height: 12),
-              
+
               // Event Title
               Text(
                 event.title,
@@ -238,7 +300,7 @@ class _MyEventsScreenState extends State<MyEventsScreen> {
                 overflow: TextOverflow.ellipsis,
               ),
               const SizedBox(height: 8),
-              
+
               // Location
               Row(
                 children: [
@@ -247,10 +309,7 @@ class _MyEventsScreenState extends State<MyEventsScreen> {
                   Expanded(
                     child: Text(
                       event.location,
-                      style: const TextStyle(
-                        color: Colors.grey,
-                        fontSize: 14,
-                      ),
+                      style: const TextStyle(color: Colors.grey, fontSize: 14),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                     ),
@@ -258,7 +317,7 @@ class _MyEventsScreenState extends State<MyEventsScreen> {
                 ],
               ),
               const SizedBox(height: 12),
-              
+
               // Actions Row
               Row(
                 children: [
@@ -316,9 +375,7 @@ class _MyEventsScreenState extends State<MyEventsScreen> {
                       );
                     },
                     icon: const Icon(Icons.share_outlined),
-                    style: IconButton.styleFrom(
-                      foregroundColor: Colors.grey,
-                    ),
+                    style: IconButton.styleFrom(foregroundColor: Colors.grey),
                   ),
                 ],
               ),
@@ -343,11 +400,7 @@ class _MyEventsScreenState extends State<MyEventsScreen> {
                 color: Colors.grey[200],
                 shape: BoxShape.circle,
               ),
-              child: const Icon(
-                Icons.event_busy,
-                size: 50,
-                color: Colors.grey,
-              ),
+              child: const Icon(Icons.event_busy, size: 50, color: Colors.grey),
             ),
             const SizedBox(height: 24),
             const Text(
@@ -362,10 +415,7 @@ class _MyEventsScreenState extends State<MyEventsScreen> {
             const Text(
               'Explora eventos y confirma tu asistencia\npara verlos aquí',
               textAlign: TextAlign.center,
-              style: TextStyle(
-                fontSize: 16,
-                color: Colors.grey,
-              ),
+              style: TextStyle(fontSize: 16, color: Colors.grey),
             ),
             const SizedBox(height: 32),
             ElevatedButton(
@@ -375,7 +425,10 @@ class _MyEventsScreenState extends State<MyEventsScreen> {
               style: ElevatedButton.styleFrom(
                 backgroundColor: const Color(0xFF6366F1),
                 foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 24,
+                  vertical: 12,
+                ),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(12),
                 ),
@@ -416,16 +469,13 @@ class _MyEventsScreenState extends State<MyEventsScreen> {
                   ),
                 ),
                 const SizedBox(height: 20),
-                
+
                 const Text(
                   'Filtrar Eventos',
-                  style: TextStyle(
-                    fontSize: 20,
-                    fontWeight: FontWeight.bold,
-                  ),
+                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
                 ),
                 const SizedBox(height: 16),
-                
+
                 ListTile(
                   leading: const Icon(Icons.calendar_today),
                   title: const Text('Próximos 7 días'),

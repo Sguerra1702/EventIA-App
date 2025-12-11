@@ -2,7 +2,9 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 import '../models/user.dart';
 import '../models/group.dart';
+import '../models/event.dart';
 import 'token_manager.dart';
+import 'auth_service.dart';
 
 class ApiService {
   // TODO: Replace with your actual backend URL
@@ -508,6 +510,341 @@ class ApiService {
       }
     } catch (e) {
       throw Exception('Error deleting group: $e');
+    }
+  }
+
+  // ============================================
+  // EVENT ENDPOINTS
+  // ============================================
+
+  // Get all events
+  static Future<List<Event>> getAllEvents() async {
+    try {
+      final headers = await _getHeaders();
+      final response = await http.get(
+        Uri.parse('$baseUrl/api/events'),
+        headers: headers,
+      );
+
+      if (response.statusCode == 200) {
+        final List<dynamic> data = json.decode(response.body);
+        return data.map((json) => Event.fromJson(json)).toList();
+      } else {
+        throw Exception('Failed to get events: ${response.statusCode}');
+      }
+    } catch (e) {
+      throw Exception('Error getting events: $e');
+    }
+  }
+
+  // Get event by ID
+  static Future<Event> getEventById(String eventId) async {
+    try {
+      final headers = await _getHeaders();
+      final response = await http.get(
+        Uri.parse('$baseUrl/api/events/$eventId'),
+        headers: headers,
+      );
+
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        return Event.fromJson(data);
+      } else {
+        throw Exception('Failed to get event: ${response.statusCode}');
+      }
+    } catch (e) {
+      throw Exception('Error getting event: $e');
+    }
+  }
+
+  // Get events by category
+  static Future<List<Event>> getEventsByCategory(String category) async {
+    try {
+      final headers = await _getHeaders();
+      final response = await http.get(
+        Uri.parse('$baseUrl/api/events/category/$category'),
+        headers: headers,
+      );
+
+      if (response.statusCode == 200) {
+        final List<dynamic> data = json.decode(response.body);
+        return data.map((json) => Event.fromJson(json)).toList();
+      } else {
+        throw Exception(
+          'Failed to get events by category: ${response.statusCode}',
+        );
+      }
+    } catch (e) {
+      throw Exception('Error getting events by category: $e');
+    }
+  }
+
+  // Get upcoming events
+  static Future<List<Event>> getUpcomingEvents() async {
+    try {
+      final headers = await _getHeaders();
+      final response = await http.get(
+        Uri.parse('$baseUrl/api/events/upcoming'),
+        headers: headers,
+      );
+
+      if (response.statusCode == 200) {
+        final List<dynamic> data = json.decode(response.body);
+        return data.map((json) => Event.fromJson(json)).toList();
+      } else {
+        throw Exception(
+          'Failed to get upcoming events: ${response.statusCode}',
+        );
+      }
+    } catch (e) {
+      throw Exception('Error getting upcoming events: $e');
+    }
+  }
+
+  // Create event
+  static Future<Event> createEvent({
+    required String title,
+    required String description,
+    required DateTime date,
+    required String location,
+    required String category,
+  }) async {
+    try {
+      final response = await _makeAuthenticatedRequest(
+        (headers) => http.post(
+          Uri.parse('$baseUrl/api/events'),
+          headers: headers,
+          body: json.encode({
+            'title': title,
+            'description': description,
+            'date': date.toIso8601String(),
+            'location': location,
+            'category': category,
+          }),
+        ),
+      );
+
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        return Event.fromJson(data);
+      } else {
+        throw Exception('Failed to create event: ${response.statusCode}');
+      }
+    } catch (e) {
+      throw Exception('Error creating event: $e');
+    }
+  }
+
+  // Delete event
+  static Future<void> deleteEvent(String eventId) async {
+    try {
+      final response = await _makeAuthenticatedRequest(
+        (headers) => http.delete(
+          Uri.parse('$baseUrl/api/events/$eventId'),
+          headers: headers,
+        ),
+      );
+
+      if (response.statusCode != 200) {
+        throw Exception('Failed to delete event: ${response.statusCode}');
+      }
+    } catch (e) {
+      throw Exception('Error deleting event: $e');
+    }
+  }
+
+  // Confirm attendance to event
+  static Future<Map<String, dynamic>> confirmAttendance(String eventId) async {
+    try {
+      print('🎫 Confirming attendance to event: $eventId');
+      final response = await _makeAuthenticatedRequest(
+        (headers) {
+          print('📨 Request headers: ${headers.keys}');
+          return http.post(
+            Uri.parse('$baseUrl/api/events/$eventId/attend'),
+            headers: headers,
+          );
+        },
+      );
+
+      print('📡 Response status: ${response.statusCode}');
+      print('📦 Response body: ${response.body}');
+
+      if (response.statusCode == 200) {
+        return json.decode(response.body);
+      } else {
+        throw Exception(
+          'Failed to confirm attendance: ${response.statusCode}',
+        );
+      }
+    } catch (e) {
+      throw Exception('Error confirming attendance: $e');
+    }
+  }
+
+  // Cancel attendance to event
+  static Future<Map<String, dynamic>> cancelAttendance(String eventId) async {
+    try {
+      final response = await _makeAuthenticatedRequest(
+        (headers) => http.delete(
+          Uri.parse('$baseUrl/api/events/$eventId/attend'),
+          headers: headers,
+        ),
+      );
+
+      if (response.statusCode == 200) {
+        return json.decode(response.body);
+      } else {
+        throw Exception('Failed to cancel attendance: ${response.statusCode}');
+      }
+    } catch (e) {
+      throw Exception('Error canceling attendance: $e');
+    }
+  }
+
+  // Get event attendees
+  static Future<List<String>> getEventAttendees(String eventId) async {
+    try {
+      final headers = await _getHeaders();
+      final response = await http.get(
+        Uri.parse('$baseUrl/api/events/$eventId/attendees'),
+        headers: headers,
+      );
+
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        return List<String>.from(data['attendees'] ?? []);
+      } else {
+        throw Exception('Failed to get attendees: ${response.statusCode}');
+      }
+    } catch (e) {
+      throw Exception('Error getting attendees: $e');
+    }
+  }
+
+  // Get events confirmed by current user
+  static Future<List<Event>> getUserConfirmedEvents() async {
+    try {
+      print('📅 Fetching user confirmed events...');
+      final headers = await _getHeaders();
+      
+      // Try with MongoDB ID first
+      var response = await http.get(
+        Uri.parse('$baseUrl/api/events/user/confirmed'),
+        headers: headers,
+      );
+
+      print('📡 Response status: ${response.statusCode}');
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body) as List;
+        print('✅ Found ${data.length} confirmed events');
+        
+        // If no events found with MongoDB ID, try with Provider ID (fallback for old data)
+        if (data.isEmpty) {
+          print('⚠️ No events found with MongoDB ID, trying with Provider ID (old data)...');
+          final user = await AuthService.getCurrentUser();
+          if (user?.providerUserId != null) {
+            // Manually filter all events by checking attendees
+            final allEvents = await getAllEvents();
+            final confirmedEvents = <Event>[];
+            
+            for (var event in allEvents) {
+              if (event.id != null) {
+                final attendees = await getEventAttendees(event.id!);
+                // Check both MongoDB ID and Provider ID
+                if (attendees.contains(user!.id) || attendees.contains(user.providerUserId)) {
+                  confirmedEvents.add(event);
+                }
+              }
+            }
+            
+            print('✅ Found ${confirmedEvents.length} confirmed events using fallback');
+            return confirmedEvents;
+          }
+        }
+        
+        return data.map((json) => Event.fromJson(json)).toList();
+      } else {
+        print('❌ Failed to get confirmed events: ${response.statusCode}');
+        print('📦 Response body: ${response.body}');
+        throw Exception('Failed to get confirmed events: ${response.statusCode}');
+      }
+    } catch (e) {
+      print('❌ Error getting confirmed events: $e');
+      throw Exception('Error getting confirmed events: $e');
+    }
+  }
+
+  // ============================================
+  // GROUP-EVENT INTERACTION ENDPOINTS
+  // ============================================
+
+  // Assign event to group
+  static Future<Group> assignEventToGroup(
+    String groupId,
+    String eventId,
+  ) async {
+    try {
+      final response = await _makeAuthenticatedRequest(
+        (headers) => http.post(
+          Uri.parse('$baseUrl/api/groups/$groupId/event/$eventId'),
+          headers: headers,
+        ),
+      );
+
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        return Group.fromJson(data);
+      } else {
+        throw Exception('Failed to assign event: ${response.statusCode}');
+      }
+    } catch (e) {
+      throw Exception('Error assigning event to group: $e');
+    }
+  }
+
+  // Remove event from group
+  static Future<Group> removeEventFromGroup(String groupId) async {
+    try {
+      final response = await _makeAuthenticatedRequest(
+        (headers) => http.delete(
+          Uri.parse('$baseUrl/api/groups/$groupId/event'),
+          headers: headers,
+        ),
+      );
+
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        return Group.fromJson(data);
+      } else {
+        throw Exception('Failed to remove event: ${response.statusCode}');
+      }
+    } catch (e) {
+      throw Exception('Error removing event from group: $e');
+    }
+  }
+
+  // Confirm group attendance to event
+  static Future<Map<String, dynamic>> confirmGroupAttendance(
+    String groupId,
+  ) async {
+    try {
+      final response = await _makeAuthenticatedRequest(
+        (headers) => http.post(
+          Uri.parse('$baseUrl/api/groups/$groupId/confirm-attendance'),
+          headers: headers,
+        ),
+      );
+
+      if (response.statusCode == 200) {
+        return json.decode(response.body);
+      } else {
+        throw Exception(
+          'Failed to confirm group attendance: ${response.statusCode}',
+        );
+      }
+    } catch (e) {
+      throw Exception('Error confirming group attendance: $e');
     }
   }
 }

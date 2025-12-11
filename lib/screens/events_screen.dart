@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 import '../models/event.dart';
-import '../data/mock_data.dart';
+import '../services/api_service.dart';
 
 class EventsScreen extends StatefulWidget {
   final String? filterCategory;
-  
+
   const EventsScreen({super.key, this.filterCategory});
 
   @override
@@ -13,36 +13,79 @@ class EventsScreen extends StatefulWidget {
 
 class _EventsScreenState extends State<EventsScreen> {
   List<Event> _filteredEvents = [];
+  List<Event> _allEvents = [];
   String _searchQuery = '';
   String? _selectedCategory;
+  bool _isLoading = true;
+  String? _errorMessage;
 
   @override
   void initState() {
     super.initState();
     _selectedCategory = widget.filterCategory;
-    _filterEvents();
+    _loadEvents();
+  }
+
+  Future<void> _loadEvents() async {
+    if (!mounted) return;
+
+    setState(() {
+      _isLoading = true;
+      _errorMessage = null;
+    });
+
+    try {
+      final events = await ApiService.getAllEvents();
+
+      if (!mounted) return;
+
+      setState(() {
+        _allEvents = events;
+        _isLoading = false;
+      });
+      _filterEvents();
+    } catch (e) {
+      if (!mounted) return;
+
+      setState(() {
+        _isLoading = false;
+        _errorMessage = 'Error al cargar eventos: ${e.toString()}';
+      });
+      print('Error loading events: $e');
+    }
   }
 
   void _filterEvents() {
-    var events = MockEventData.getAllEvents();
-    
+    var events = List<Event>.from(_allEvents);
+
     // Filter by category
     if (_selectedCategory != null && _selectedCategory!.isNotEmpty) {
-      events = events.where((event) => event.category == _selectedCategory).toList();
+      events = events
+          .where((event) => event.category == _selectedCategory)
+          .toList();
     }
-    
+
     // Filter by search query
     if (_searchQuery.isNotEmpty) {
-      events = events.where((event) => 
-        event.title.toLowerCase().contains(_searchQuery.toLowerCase()) ||
-        event.location.toLowerCase().contains(_searchQuery.toLowerCase()) ||
-        event.description.toLowerCase().contains(_searchQuery.toLowerCase())
-      ).toList();
+      events = events
+          .where(
+            (event) =>
+                event.title.toLowerCase().contains(
+                  _searchQuery.toLowerCase(),
+                ) ||
+                event.location.toLowerCase().contains(
+                  _searchQuery.toLowerCase(),
+                ) ||
+                event.description.toLowerCase().contains(
+                  _searchQuery.toLowerCase(),
+                ),
+          )
+          .toList();
     }
-    
+
     // Sort by date (nearest first)
     events.sort((a, b) => a.date.compareTo(b.date));
-    
+
     setState(() {
       _filteredEvents = events;
     });
@@ -99,7 +142,10 @@ class _EventsScreenState extends State<EventsScreen> {
                       hintText: 'Buscar eventos...',
                       prefixIcon: Icon(Icons.search, color: Colors.grey),
                       border: InputBorder.none,
-                      contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                      contentPadding: EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 12,
+                      ),
                     ),
                   ),
                 ),
@@ -111,15 +157,15 @@ class _EventsScreenState extends State<EventsScreen> {
                     const SizedBox(width: 8),
                     const Text(
                       'Bogotá, Colombia',
-                      style: TextStyle(
-                        color: Colors.grey,
-                        fontSize: 14,
-                      ),
+                      style: TextStyle(color: Colors.grey, fontSize: 14),
                     ),
                     const Spacer(),
                     if (_selectedCategory != null)
                       Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 4,
+                        ),
                         decoration: BoxDecoration(
                           color: const Color(0xFF6366F1).withOpacity(0.1),
                           borderRadius: BorderRadius.circular(20),
@@ -157,19 +203,47 @@ class _EventsScreenState extends State<EventsScreen> {
               ],
             ),
           ),
-          
+
           // Events List
           Expanded(
-            child: _filteredEvents.isEmpty
+            child: _isLoading
+                ? const Center(child: CircularProgressIndicator())
+                : _errorMessage != null
+                ? Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        const Icon(
+                          Icons.error_outline,
+                          size: 60,
+                          color: Colors.red,
+                        ),
+                        const SizedBox(height: 16),
+                        Text(
+                          _errorMessage!,
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(
+                            fontSize: 16,
+                            color: Colors.grey,
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+                        ElevatedButton(
+                          onPressed: _loadEvents,
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: const Color(0xFF6366F1),
+                          ),
+                          child: const Text('Reintentar'),
+                        ),
+                      ],
+                    ),
+                  )
+                : _filteredEvents.isEmpty
                 ? const Center(
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        Icon(
-                          Icons.event_busy,
-                          size: 64,
-                          color: Colors.grey,
-                        ),
+                        Icon(Icons.event_busy, size: 64, color: Colors.grey),
                         SizedBox(height: 16),
                         Text(
                           'No se encontraron eventos',
@@ -182,10 +256,7 @@ class _EventsScreenState extends State<EventsScreen> {
                         SizedBox(height: 8),
                         Text(
                           'Intenta cambiar los filtros de búsqueda',
-                          style: TextStyle(
-                            fontSize: 14,
-                            color: Colors.grey,
-                          ),
+                          style: TextStyle(fontSize: 14, color: Colors.grey),
                         ),
                       ],
                     ),
@@ -231,7 +302,9 @@ class _EventsScreenState extends State<EventsScreen> {
             Container(
               height: 160,
               decoration: BoxDecoration(
-                borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
+                borderRadius: const BorderRadius.vertical(
+                  top: Radius.circular(16),
+                ),
                 color: Colors.grey[300],
               ),
               child: Stack(
@@ -240,7 +313,9 @@ class _EventsScreenState extends State<EventsScreen> {
                     width: double.infinity,
                     height: double.infinity,
                     decoration: BoxDecoration(
-                      borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
+                      borderRadius: const BorderRadius.vertical(
+                        top: Radius.circular(16),
+                      ),
                       gradient: LinearGradient(
                         begin: Alignment.topLeft,
                         end: Alignment.bottomRight,
@@ -256,7 +331,10 @@ class _EventsScreenState extends State<EventsScreen> {
                     top: 12,
                     left: 12,
                     child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 4,
+                      ),
                       decoration: BoxDecoration(
                         color: Colors.black.withOpacity(0.7),
                         borderRadius: BorderRadius.circular(12),
@@ -276,10 +354,13 @@ class _EventsScreenState extends State<EventsScreen> {
                     top: 12,
                     right: 12,
                     child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 4,
+                      ),
                       decoration: BoxDecoration(
-                        color: event.price == 0 
-                            ? Colors.green 
+                        color: event.price == 0
+                            ? Colors.green
                             : const Color(0xFF6366F1),
                         borderRadius: BorderRadius.circular(12),
                       ),
@@ -296,7 +377,7 @@ class _EventsScreenState extends State<EventsScreen> {
                 ],
               ),
             ),
-            
+
             // Event Info
             Padding(
               padding: const EdgeInsets.all(16),
@@ -321,7 +402,11 @@ class _EventsScreenState extends State<EventsScreen> {
                       const SizedBox(width: 8),
                       Row(
                         children: [
-                          const Icon(Icons.star, color: Colors.orange, size: 16),
+                          const Icon(
+                            Icons.star,
+                            color: Colors.orange,
+                            size: 16,
+                          ),
                           const SizedBox(width: 4),
                           Text(
                             event.rating.toString(),
@@ -336,11 +421,15 @@ class _EventsScreenState extends State<EventsScreen> {
                     ],
                   ),
                   const SizedBox(height: 8),
-                  
+
                   // Date and Location
                   Row(
                     children: [
-                      const Icon(Icons.calendar_today, color: Colors.grey, size: 16),
+                      const Icon(
+                        Icons.calendar_today,
+                        color: Colors.grey,
+                        size: 16,
+                      ),
                       const SizedBox(width: 6),
                       Text(
                         event.getFormattedDate(),
@@ -354,7 +443,11 @@ class _EventsScreenState extends State<EventsScreen> {
                   const SizedBox(height: 4),
                   Row(
                     children: [
-                      const Icon(Icons.location_on, color: Colors.grey, size: 16),
+                      const Icon(
+                        Icons.location_on,
+                        color: Colors.grey,
+                        size: 16,
+                      ),
                       const SizedBox(width: 6),
                       Expanded(
                         child: Text(
@@ -378,7 +471,7 @@ class _EventsScreenState extends State<EventsScreen> {
                     ],
                   ),
                   const SizedBox(height: 12),
-                  
+
                   // Attendees
                   Row(
                     children: [
@@ -386,13 +479,14 @@ class _EventsScreenState extends State<EventsScreen> {
                       const SizedBox(width: 6),
                       Text(
                         '${event.attendees} asistentes',
-                        style: TextStyle(
-                          color: Colors.grey[600],
-                          fontSize: 14,
-                        ),
+                        style: TextStyle(color: Colors.grey[600], fontSize: 14),
                       ),
                       const Spacer(),
-                      const Icon(Icons.arrow_forward_ios, color: Colors.grey, size: 16),
+                      const Icon(
+                        Icons.arrow_forward_ios,
+                        color: Colors.grey,
+                        size: 16,
+                      ),
                     ],
                   ),
                 ],
@@ -433,35 +527,34 @@ class _EventsScreenState extends State<EventsScreen> {
                   ),
                 ),
                 const SizedBox(height: 20),
-                
+
                 const Text(
                   'Filtrar por Categoría',
-                  style: TextStyle(
-                    fontSize: 20,
-                    fontWeight: FontWeight.bold,
-                  ),
+                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
                 ),
                 const SizedBox(height: 16),
-                
-                // Categories
-                ...MockEventData.getCategories().map((category) {
+
+                // Categories - Get unique categories from events
+                ...(_getUniqueCategories().map((category) {
                   return ListTile(
                     title: Text(category),
-                    trailing: _selectedCategory == category 
+                    trailing: _selectedCategory == category
                         ? const Icon(Icons.check, color: Color(0xFF6366F1))
                         : null,
                     onTap: () {
                       setState(() {
-                        _selectedCategory = _selectedCategory == category ? null : category;
+                        _selectedCategory = _selectedCategory == category
+                            ? null
+                            : category;
                       });
                       _filterEvents();
                       Navigator.pop(context);
                     },
                   );
-                }).toList(),
-                
+                }).toList()),
+
                 const SizedBox(height: 16),
-                
+
                 // Clear filters button
                 if (_selectedCategory != null)
                   SizedBox(
@@ -477,7 +570,7 @@ class _EventsScreenState extends State<EventsScreen> {
                       child: const Text('Limpiar Filtros'),
                     ),
                   ),
-                
+
                 SizedBox(height: MediaQuery.of(context).viewInsets.bottom),
               ],
             ),
@@ -485,5 +578,11 @@ class _EventsScreenState extends State<EventsScreen> {
         );
       },
     );
+  }
+
+  List<String> _getUniqueCategories() {
+    final categories = _allEvents.map((e) => e.category).toSet().toList();
+    categories.sort();
+    return categories;
   }
 }
